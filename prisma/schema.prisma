@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApiLifecycleStatus {
+  ACTIVE
+  DRAFT
+  DEPRECATED
+}
+
+model Api {
+  id          String             @id @default(uuid())
+  name        String
+  description String?
+  owner       String             @default("Unassigned")
+  status      ApiLifecycleStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions ApiVersion[]
+
+  @@map("apis")
+}
+
+model ApiVersion {
+  id          String @id @default(uuid())
+  apiId       String
+  version     String
+  description String
+  status      String @default("DRAFT")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  api Api @relation(fields: [apiId], references: [id], onDelete: Restrict)
+
+  @@unique([apiId, version])
+  @@index([apiId])
+  @@map("api_versions")
+}
