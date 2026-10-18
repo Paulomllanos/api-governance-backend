@@ -13,6 +13,25 @@ enum ApiLifecycleStatus {
   DEPRECATED
 }
 
+enum OpenApiFormat {
+  JSON
+  YAML
+}
+
+enum EvaluationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum RuleResultStatus {
+  PASS
+  FAIL
+  WARNING
+  NOT_APPLICABLE
+}
+
 model Api {
   id          String             @id @default(uuid())
   name        String
@@ -40,7 +59,76 @@ model ApiVersion {
 
   api Api @relation(fields: [apiId], references: [id], onDelete: Restrict)
 
+  documents OpenApiDocument[]
+
   @@unique([apiId, version])
   @@index([apiId])
   @@map("api_versions")
+}
+
+model OpenApiDocument {
+  id             String        @id @default(uuid())
+  versionId      String
+  fileName       String
+  content        String        @db.Text
+  format         OpenApiFormat
+  openApiVersion String
+  isValid        Boolean
+  uploadedBy     String
+  createdAt      DateTime      @default(now())
+
+  apiVersion ApiVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  evaluations GovernanceExecution[]
+
+  @@index([versionId])
+  @@map("openapi_documents")
+}
+
+model GovernanceExecution {
+  id         String @id @default(uuid())
+  documentId String
+  executedBy String
+
+  status EvaluationStatus @default(PENDING)
+
+  requestedAt DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  qualityScore      Float?
+  hasBlockingIssues Boolean?
+
+  totalRules         Int @default(0)
+  passedRules        Int @default(0)
+  failedRules        Int @default(0)
+  warningRules       Int @default(0)
+  notApplicableRules Int @default(0)
+
+  errorMessage String? @db.Text
+
+  document OpenApiDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  results  RuleResult[]
+
+  @@index([documentId, requestedAt])
+  @@index([status])
+  @@map("governance_executions")
+}
+
+model RuleResult {
+  id          String @id @default(uuid())
+  executionId String
+
+  ruleId String
+  status RuleResultStatus
+
+  message        String  @db.Text
+  evidence       String? @db.Text
+  recommendation String? @db.Text
+
+  execution GovernanceExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+
+  @@unique([executionId, ruleId])
+  @@index([ruleId])
+  @@map("rule_results")
 }

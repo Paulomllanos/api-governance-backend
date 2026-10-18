@@ -7,6 +7,9 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { ApisModule } from './apis/apis.module.js';
 import { VersionsModule } from './versions/versions.module.js';
 
+import { DocumentsModule } from './documents/documents.module.js';
+import { EvaluationsModule } from './evaluations/evaluations.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -15,6 +18,8 @@ import { VersionsModule } from './versions/versions.module.js';
     PrismaModule,
     ApisModule,
     VersionsModule,
+    DocumentsModule,
+    EvaluationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

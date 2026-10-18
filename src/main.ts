@@ -5,8 +5,16 @@ import { ConfigService } from '@nestjs/config';
 
 import { AppModule } from './app.module.js';
 
+import type { NestExpressApplication } from '@nestjs/platform-express';
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule,
+  );
+
+  app.useBodyParser('json', {
+    limit: '2mb',
+  });
 
   const configService = app.get(ConfigService);
 

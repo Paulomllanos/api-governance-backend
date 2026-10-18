@@ -14,13 +14,24 @@ export class ApisService {
         private readonly prisma: PrismaService,
     ) { }
 
+
     async findAll() {
-        return this.prisma.api.findMany({
+        const apis = await this.prisma.api.findMany({
+            include: {
+                versions: {
+                    select: {
+                        version: true,
+                    },
+                },
+            },
             orderBy: {
                 createdAt: 'desc',
             },
         });
+
+        return apis.map(mapApiWithVersions);
     }
+
 
 
 
@@ -53,9 +64,17 @@ export class ApisService {
 
 
 
+
     async findOne(id: string) {
         const api = await this.prisma.api.findUnique({
             where: { id },
+            include: {
+                versions: {
+                    select: {
+                        version: true,
+                    },
+                },
+            },
         });
 
         if (!api) {
@@ -64,8 +83,9 @@ export class ApisService {
             );
         }
 
-        return api;
+        return mapApiWithVersions(api);
     }
+
 
     async update(id: string, data: UpdateApiDto) {
         // Comprobamos que la API exista.
@@ -119,3 +139,40 @@ export class ApisService {
     }
 
 }
+
+
+function compareSemanticVersions(
+    a: string,
+    b: string,
+): number {
+    const aParts = a.split('.').map(Number);
+    const bParts = b.split('.').map(Number);
+
+    for (let index = 0; index < 3; index++) {
+        const difference = aParts[index] - bParts[index];
+
+        if (difference !== 0) {
+            return difference;
+        }
+    }
+
+    return 0;
+}
+
+
+function mapApiWithVersions<
+    T extends { versions: { version: string }[] }
+>(api: T) {
+    const { versions, ...apiData } = api;
+
+    const latestVersion = versions
+        .map((item) => item.version)
+        .sort((a, b) => compareSemanticVersions(b, a))[0] ?? null;
+
+    return {
+        ...apiData,
+        versionCount: versions.length,
+        latestVersion,
+    };
+}
+
