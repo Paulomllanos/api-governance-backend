@@ -32,6 +32,22 @@ enum RuleResultStatus {
   NOT_APPLICABLE
 }
 
+enum GovernanceRuleCategory {
+  DESIGN
+  DOCUMENTATION
+  SECURITY
+  VERSIONING
+  OBSERVABILITY
+  GOVERNANCE
+}
+
+enum GovernanceRuleSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model Api {
   id          String             @id @default(uuid())
   name        String
@@ -119,7 +135,12 @@ model RuleResult {
   id          String @id @default(uuid())
   executionId String
 
-  ruleId String
+  ruleId   String
+  ruleName String?
+  category GovernanceRuleCategory?
+  severity GovernanceRuleSeverity?
+  weight   Float?
+
   status RuleResultStatus
 
   message        String  @db.Text
@@ -130,5 +151,6 @@ model RuleResult {
 
   @@unique([executionId, ruleId])
   @@index([ruleId])
+  @@index([category, severity])
   @@map("rule_results")
 }

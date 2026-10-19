@@ -19,11 +19,21 @@ import {
   Design004HttpResponsesRule,
 } from '../rules/design-004-http-responses.rule.js';
 
+import {
+  Documentation001OperationDescriptionRule,
+} from '../rules/documentation-001-operation-description.rule.js';
+
+import {
+  Documentation002ParameterDescriptionRule,
+} from '../rules/documentation-002-parameter-description.rule.js';
+
 export const GOVERNANCE_RULES: readonly GovernanceRule[] = [
   new Design001PathNamingRule(),
   new Design002PathParametersRule(),
   new Design003OperationIdRule(),
   new Design004HttpResponsesRule(),
+  new Documentation001OperationDescriptionRule(),
+  new Documentation002ParameterDescriptionRule(),
 ];
 
 export function getGovernanceRules(): GovernanceRule[] {

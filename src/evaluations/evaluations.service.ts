@@ -18,6 +18,22 @@ import {
     isOpenApiObject,
 } from '../governance/utils/resolve-local-ref.js';
 
+
+import {
+    getGovernanceRules,
+} from '../governance/catalog/governance-rules.catalog.js';
+
+import {
+    calculateQualityScore,
+} from '../governance/scoring/quality-score.calculator.js';
+
+import type {
+    GovernanceRuleResult,
+} from '../governance/interfaces/governance-result.interface.js';
+
+const EXPECTED_MVP_RULES = 18;
+
+
 @Injectable()
 export class EvaluationsService {
     constructor(
@@ -130,16 +146,26 @@ export class EvaluationsService {
             // La persistencia de los resultados y el cierre
             // de la evaluación deben ocurrir atómicamente.
             await this.prisma.$transaction(async (tx) => {
+
                 await tx.ruleResult.createMany({
                     data: result.results.map((rule) => ({
                         executionId: id,
+
+                        // Identificación y metadatos históricos
                         ruleId: rule.ruleId,
+                        ruleName: rule.ruleName,
+                        category: rule.category,
+                        severity: rule.severity,
+                        weight: rule.weight,
+
+                        // Resultado de la evaluación
                         status: rule.status,
                         message: rule.message,
                         evidence: rule.evidence ?? null,
                         recommendation: rule.recommendation ?? null,
                     })),
                 });
+
 
                 await tx.governanceExecution.update({
                     where: { id },
@@ -275,6 +301,66 @@ export class EvaluationsService {
             );
         }
 
-        return execution;
+
+
+        let scoreAssessment = null;
+
+        if (execution.status === 'COMPLETED') {
+            const results = execution.results;
+
+            const hasCompleteMetadata =
+                results.length > 0 &&
+                results.every(
+                    (result) =>
+                        result.ruleName !== null &&
+                        result.category !== null &&
+                        result.severity !== null &&
+                        result.weight !== null &&
+                        Number.isFinite(result.weight) &&
+                        result.weight > 0,
+                );
+
+            if (hasCompleteMetadata) {
+                const historicalResults: GovernanceRuleResult[] =
+                    results.map((result) => ({
+                        ruleId: result.ruleId,
+                        ruleName: result.ruleName!,
+                        category: result.category!,
+                        severity: result.severity!,
+                        weight: result.weight!,
+                        status: result.status,
+                        message: result.message,
+                        evidence: result.evidence ?? undefined,
+                        recommendation:
+                            result.recommendation ?? undefined,
+                    }));
+
+                const calculation =
+                    calculateQualityScore(historicalResults);
+
+                const executedRules = results.length;
+
+                scoreAssessment = {
+                    score: calculation.score,
+                    executedRules,
+                    expectedRules: EXPECTED_MVP_RULES,
+                    applicableRules: calculation.applicableRules,
+                    excludedRules: calculation.excludedRules,
+                    coveragePercentage: Math.round(
+                        (executedRules / EXPECTED_MVP_RULES) * 10000,
+                    ) / 100,
+                    isProvisional: true,
+                    criticalFailuresDetectedInExecutedRules:
+                        calculation.hasCriticalFailures,
+                };
+            }
+        }
+
+        return {
+            ...execution,
+            scoreAssessment,
+        };
+
+
     }
 }

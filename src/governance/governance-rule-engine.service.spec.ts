@@ -17,6 +17,8 @@ describe('GovernanceRuleEngineService', () => {
     paths: {
       '/customers': {
         get: {
+          summary: 'Listar clientes',
+          description: 'Obtiene los clientes registrados.',
           operationId: 'listCustomers',
           responses: {
             '200': {
@@ -27,12 +29,15 @@ describe('GovernanceRuleEngineService', () => {
       },
       '/customers/{customerId}': {
         get: {
+          summary: 'Obtiene cliente',
+          description: 'Obtiene un cliente por su ID.',
           operationId: 'getCustomerById',
           parameters: [
             {
               name: 'customerId',
               in: 'path',
               required: true,
+              description: 'Identificador único del cliente.',
               schema: {
                 type: 'string',
               },
@@ -51,11 +56,11 @@ describe('GovernanceRuleEngineService', () => {
     },
   };
 
-  it('ejecuta las cuatro reglas registradas', () => {
+  it('ejecuta las cinco reglas registradas', () => {
     const result = engine.execute(validSpecification);
 
-    expect(result.totalRules).toBe(4);
-    expect(result.results).toHaveLength(4);
+    expect(result.totalRules).toBe(6);
+    expect(result.results).toHaveLength(6);
   });
 
   it('mantiene los identificadores de las reglas', () => {
@@ -66,16 +71,36 @@ describe('GovernanceRuleEngineService', () => {
       'DESIGN-002',
       'DESIGN-003',
       'DESIGN-004',
+      'DOCUMENTATION-001',
+      'DOCUMENTATION-002',
     ]);
   });
 
   it('consolida correctamente los resultados', () => {
     const result = engine.execute(validSpecification);
 
-    expect(result.passedRules).toBe(4);
+
+    expect(result.passedRules).toBe(6);
     expect(result.failedRules).toBe(0);
     expect(result.warningRules).toBe(0);
     expect(result.notApplicableRules).toBe(0);
+
+    const documentation002 = result.results.find(
+      (rule) => rule.ruleId === 'DOCUMENTATION-002',
+    );
+
+    expect(documentation002).toBeDefined();
+    expect(documentation002?.status).toBe('PASS');
+
+
+    console.log('DOCUMENTATION-002:', {
+      status: documentation002?.status,
+      message: documentation002?.message,
+      evidence: documentation002?.evidence,
+      recommendation: documentation002?.recommendation,
+    });
+
+
   });
 
   it('detecta incumplimientos en el documento', () => {
