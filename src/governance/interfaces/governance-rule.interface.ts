@@ -1,3 +1,6 @@
+import type {
+  GovernanceEvaluationContext,
+} from './governance-evaluation-context.interface.js';
 
 export type GovernanceRuleCategory =
   | 'DESIGN'
@@ -18,10 +21,10 @@ export type OpenApiSpecification =
 
 export interface GovernanceRuleEvaluation {
   status:
-    | 'PASS'
-    | 'FAIL'
-    | 'WARNING'
-    | 'NOT_APPLICABLE';
+  | 'PASS'
+  | 'FAIL'
+  | 'WARNING'
+  | 'NOT_APPLICABLE';
 
   message: string;
   evidence?: string;
@@ -36,7 +39,10 @@ export interface GovernanceRule {
   severity: GovernanceRuleSeverity;
   weight: number;
 
+
   evaluate(
     specification: OpenApiSpecification,
+    context?: GovernanceEvaluationContext,
   ): GovernanceRuleEvaluation;
+
 }

@@ -8,9 +8,9 @@ import {
 describe('Governance Rules Catalog', () => {
   const rules = getGovernanceRules();
 
-  it('contiene cuatro reglas de diseño y dos de documentación', () => {
+  it('contiene reglas distribuida por categorías', () => {
     // Total de reglas implementadas
-    expect(rules).toHaveLength(6);
+    expect(rules).toHaveLength(12);
 
     // Verificar las cuatro reglas de diseño
     expect(
@@ -20,7 +20,16 @@ describe('Governance Rules Catalog', () => {
     // Verificar la primera regla de documentación
     expect(
       rules.filter((rule) => rule.category === 'DOCUMENTATION'),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
+
+    // Verificar la primera regla de seguridad
+    expect(
+      rules.filter((rule) => rule.category === 'SECURITY'),
+    ).toHaveLength(3);
+
+    expect(
+      rules.filter((rule) => rule.category === 'VERSIONING'),
+    ).toHaveLength(1);
   });
 
   it('no contiene identificadores duplicados', () => {
@@ -53,6 +62,12 @@ describe('Governance Rules Catalog', () => {
       'DESIGN-004',
       'DOCUMENTATION-001',
       'DOCUMENTATION-002',
+      'DOCUMENTATION-003',
+      'DOCUMENTATION-004',
+      'SECURITY-001',
+      'SECURITY-002',
+      'SECURITY-003',
+      'VERSIONING-001',
     ]);
   });
 

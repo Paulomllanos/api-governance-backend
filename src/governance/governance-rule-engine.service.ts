@@ -20,6 +20,10 @@ import {
     getGovernanceRules,
 } from './catalog/governance-rules.catalog.js';
 
+import type {
+  GovernanceEvaluationContext,
+} from './interfaces/governance-evaluation-context.interface.js';
+
 @Injectable()
 export class GovernanceRuleEngineService {
     private readonly rules: GovernanceRule[] =
@@ -27,6 +31,7 @@ export class GovernanceRuleEngineService {
 
     execute(
         specification: OpenApiSpecification,
+        context: GovernanceEvaluationContext = {},
     ): GovernanceEngineResult {
         if (this.rules.length === 0) {
             throw new InternalServerErrorException(
@@ -36,7 +41,7 @@ export class GovernanceRuleEngineService {
 
         const results: GovernanceRuleResult[] =
             this.rules.map((rule) => {
-                const evaluation = rule.evaluate(specification);
+                const evaluation = rule.evaluate(specification, context);
 
                 return {
                     ruleId: rule.id,

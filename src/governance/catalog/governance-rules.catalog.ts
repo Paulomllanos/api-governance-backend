@@ -27,6 +27,30 @@ import {
   Documentation002ParameterDescriptionRule,
 } from '../rules/documentation-002-parameter-description.rule.js';
 
+import {
+  Documentation003SchemaDescriptionRule,
+} from '../rules/documentation-003-schema-description.rule.js';
+
+import {
+  Documentation004ApiDescriptionRule,
+} from '../rules/documentation-004-api-description.rule.js';
+
+import {
+  Security001OperationSecurityRule,
+} from '../rules/security-001-operation-security.rule.js';
+
+import {
+  Security002SecuritySchemesRule,
+} from '../rules/security-002-security-schemes.rule.js';
+
+import {
+  Security003OAuthScopesRule,
+} from '../rules/security-003-oauth-scopes.rule.js';
+
+import {
+  Versioning001VersionConsistencyRule,
+} from '../rules/versioning-001-version-consistency.rule.js';
+
 export const GOVERNANCE_RULES: readonly GovernanceRule[] = [
   new Design001PathNamingRule(),
   new Design002PathParametersRule(),
@@ -34,6 +58,13 @@ export const GOVERNANCE_RULES: readonly GovernanceRule[] = [
   new Design004HttpResponsesRule(),
   new Documentation001OperationDescriptionRule(),
   new Documentation002ParameterDescriptionRule(),
+  new Documentation003SchemaDescriptionRule(),
+  new Documentation004ApiDescriptionRule(),
+  new Security001OperationSecurityRule(),
+  new Security002SecuritySchemesRule(),
+  new Security003OAuthScopesRule(),
+  new Versioning001VersionConsistencyRule(),
+
 ];
 
 export function getGovernanceRules(): GovernanceRule[] {
