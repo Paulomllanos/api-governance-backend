@@ -10,26 +10,37 @@ describe('Governance Rules Catalog', () => {
 
   it('contiene reglas distribuida por categorías', () => {
     // Total de reglas implementadas
-    expect(rules).toHaveLength(12);
+    expect(rules).toHaveLength(18);
 
-    // Verificar las cuatro reglas de diseño
+    // Verificar las reglas de diseño
     expect(
       rules.filter((rule) => rule.category === 'DESIGN'),
     ).toHaveLength(4);
 
-    // Verificar la primera regla de documentación
+    // Verificar las reglas de documentación
     expect(
       rules.filter((rule) => rule.category === 'DOCUMENTATION'),
     ).toHaveLength(4);
 
-    // Verificar la primera regla de seguridad
+    // Verificar las reglas de seguridad
     expect(
       rules.filter((rule) => rule.category === 'SECURITY'),
     ).toHaveLength(3);
 
+    // Verificar las reglas de versionado
     expect(
       rules.filter((rule) => rule.category === 'VERSIONING'),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
+
+    // Verificar las reglas de observabilidad
+    expect(
+      rules.filter((rule) => rule.category === 'OBSERVABILITY'),
+    ).toHaveLength(2);
+
+    // Verificar las reglas de gobernanza
+    expect(
+      rules.filter((rule) => rule.category === 'GOVERNANCE'),
+    ).toHaveLength(3);
   });
 
   it('no contiene identificadores duplicados', () => {
@@ -68,6 +79,12 @@ describe('Governance Rules Catalog', () => {
       'SECURITY-002',
       'SECURITY-003',
       'VERSIONING-001',
+      'VERSIONING-002',
+      'OBSERVABILITY-001',
+      'OBSERVABILITY-002',
+      'GOVERNANCE-001',
+      'GOVERNANCE-002',
+      'GOVERNANCE-003',
     ]);
   });
 

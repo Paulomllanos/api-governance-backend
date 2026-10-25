@@ -9,6 +9,10 @@ import {
 
 import { EvaluationsService } from './evaluations.service.js';
 
+import {
+  RequirePermissions,
+} from '../authorization/decorators/require-permissions.decorator.js';
+
 @Controller()
 export class EvaluationsController {
     constructor(
@@ -16,6 +20,7 @@ export class EvaluationsController {
     ) { }
 
     @Post('documents/:documentId/evaluations')
+    @RequirePermissions('evaluations:create')
     create(
         @Param('documentId', ParseUUIDPipe)
         documentId: string,
@@ -24,6 +29,7 @@ export class EvaluationsController {
     }
 
     @Get('documents/:documentId/evaluations')
+    @RequirePermissions('evaluations:read')
     findByDocument(
         @Param('documentId', ParseUUIDPipe)
         documentId: string,
@@ -34,11 +40,13 @@ export class EvaluationsController {
     }
 
     @Get('evaluations')
+    @RequirePermissions('evaluations:read')
     findAll() {
         return this.evaluationsService.findAll();
     }
 
     @Get('evaluations/:id')
+    @RequirePermissions('evaluations:read')
     findOne(
         @Param('id', ParseUUIDPipe)
         id: string,
@@ -48,6 +56,7 @@ export class EvaluationsController {
 
 
     @Post('evaluations/:id/execute')
+    @RequirePermissions('evaluations:create')
     execute(
         @Param('id', ParseUUIDPipe)
         id: string,

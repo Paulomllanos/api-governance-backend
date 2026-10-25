@@ -51,6 +51,30 @@ import {
   Versioning001VersionConsistencyRule,
 } from '../rules/versioning-001-version-consistency.rule.js';
 
+import {
+  Versioning002SemverRule,
+} from '../rules/versioning-002-semver.rule.js';
+
+import {
+  Observability001CorrelationIdRule,
+} from '../rules/observability-001-correlation-id.rule.js';
+
+import {
+  Observability002ErrorTraceabilityRule,
+} from '../rules/observability-002-error-traceability.rule.js';
+
+import {
+  Governance001ApiOwnerRule,
+} from '../rules/governance-001-api-owner.rule.js';
+
+import {
+  Governance002ApiLifecycleRule,
+} from '../rules/governance-002-api-lifecycle.rule.js';
+
+import {
+  Governance003DocumentTraceabilityRule,
+} from '../rules/governance-003-document-traceability.rule.js';
+
 export const GOVERNANCE_RULES: readonly GovernanceRule[] = [
   new Design001PathNamingRule(),
   new Design002PathParametersRule(),
@@ -64,7 +88,12 @@ export const GOVERNANCE_RULES: readonly GovernanceRule[] = [
   new Security002SecuritySchemesRule(),
   new Security003OAuthScopesRule(),
   new Versioning001VersionConsistencyRule(),
-
+  new Versioning002SemverRule(),
+  new Observability001CorrelationIdRule(),
+  new Observability002ErrorTraceabilityRule(),
+  new Governance001ApiOwnerRule(),
+  new Governance002ApiLifecycleRule(),
+  new Governance003DocumentTraceabilityRule(),
 ];
 
 export function getGovernanceRules(): GovernanceRule[] {

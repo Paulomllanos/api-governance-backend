@@ -20,6 +20,15 @@ import {
 
 
 import {
+    calculateFinalQualityScore,
+    type QualityRuleInput,
+} from '../governance/scoring/calculate-final-quality-score.js';
+
+import {
+    validateCompleteEvaluation,
+} from '../governance/scoring/validate-complete-evaluation.js';
+
+import {
     getGovernanceRules,
 } from '../governance/catalog/governance-rules.catalog.js';
 
@@ -73,6 +82,20 @@ export class EvaluationsService {
                         select: {
                             content: true,
                             format: true,
+                            fileName: true,
+                            uploadedBy: true,
+                            isValid: true,
+                            apiVersion: {
+                                select: {
+                                    version: true,
+                                    api: {
+                                        select: {
+                                            owner: true,
+                                            status: true,
+                                        },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -141,7 +164,58 @@ export class EvaluationsService {
                 );
             }
 
-            const result = this.engine.execute(specification);
+
+            // Contexto obtenido desde la versión registrada
+            // en API Governance Platform.
+            const evaluationContext = {
+                registeredApiVersion:
+                    execution.document.apiVersion.version,
+                apiOwner:
+                    execution.document.apiVersion.api.owner,
+
+                apiLifecycleStatus:
+                    execution.document.apiVersion.api.status,
+                documentFileName:
+                    execution.document.fileName,
+                documentUploadedBy:
+                    execution.document.uploadedBy,
+                documentIsValid:
+                    execution.document.isValid,
+            };
+
+            // Ejecutar las reglas utilizando el documento
+            // y sus metadatos registrados.
+            const result = this.engine.execute(
+                specification,
+                evaluationContext,
+            );
+
+
+            const expectedRuleIds = getGovernanceRules().map(
+                (rule) => rule.id,
+            );
+
+            // Verificar integridad de la evaluación.
+            validateCompleteEvaluation(
+                result.results,
+                expectedRuleIds,
+            );
+
+            // Construir la entrada de la calculadora.
+            const scoringInput: QualityRuleInput[] =
+                result.results.map((rule) => ({
+                    ruleId: rule.ruleId,
+                    status: rule.status,
+                    severity: rule.severity,
+                    weight: rule.weight,
+                }));
+
+            // Calcular el Quality Score definitivo.
+            const scoreResult = calculateFinalQualityScore(
+                scoringInput,
+            );
+
+
 
             // La persistencia de los resultados y el cierre
             // de la evaluación deben ocurrir atómicamente.
@@ -178,11 +252,8 @@ export class EvaluationsService {
                         warningRules: result.warningRules,
                         notApplicableRules:
                             result.notApplicableRules,
-
-                        // Estos datos se calcularán cuando
-                        // implementemos la política de puntuación.
-                        qualityScore: null,
-                        hasBlockingIssues: null,
+                        qualityScore: scoreResult.score,
+                        hasBlockingIssues: scoreResult.hasBlockingIssues,
                     },
                 });
             });

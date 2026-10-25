@@ -11,6 +11,10 @@ import {
 import { DocumentsService } from './documents.service.js';
 import { CreateDocumentDto } from './dto/create-document.dto.js';
 
+import {
+  RequirePermissions,
+} from '../authorization/decorators/require-permissions.decorator.js';
+
 @Controller()
 export class DocumentsController {
   constructor(
@@ -18,6 +22,7 @@ export class DocumentsController {
   ) {}
 
   @Post('versions/:versionId/documents')
+  @RequirePermissions('versions:create')
   create(
     @Param('versionId', new ParseUUIDPipe()) versionId: string,
     @Body() data: CreateDocumentDto,
@@ -26,6 +31,7 @@ export class DocumentsController {
   }
 
   @Get('versions/:versionId/documents')
+  @RequirePermissions('versions:read')
   findAll(
     @Param('versionId', new ParseUUIDPipe()) versionId: string,
   ) {

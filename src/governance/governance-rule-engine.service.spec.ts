@@ -24,6 +24,17 @@ describe('GovernanceRuleEngineService', () => {
     ],
     paths: {
       '/customers': {
+        parameters: [
+          {
+            name: 'X-Correlation-ID',
+            in: 'header',
+            required: false,
+            description: 'Identificador de correlación.',
+            schema: {
+              type: 'string',
+            },
+          },
+        ],
         get: {
           summary: 'Listar clientes',
           description: 'Obtiene los clientes registrados.',
@@ -32,10 +43,33 @@ describe('GovernanceRuleEngineService', () => {
             '200': {
               description: 'Listado obtenido',
             },
+            '500': {
+              description: 'Error interno del servicio.',
+              headers: {
+                'X-Correlation-ID': {
+                  description:
+                    'Identificador para rastrear la solicitud fallida.',
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
           },
         },
       },
       '/customers/{customerId}': {
+        parameters: [
+          {
+            name: 'X-Correlation-ID',
+            in: 'header',
+            required: false,
+            description: 'Identificador de correlación.',
+            schema: {
+              type: 'string',
+            },
+          },
+        ],
         get: {
           summary: 'Obtiene cliente',
           description: 'Obtiene un cliente por su ID.',
@@ -57,6 +91,27 @@ describe('GovernanceRuleEngineService', () => {
             },
             '404': {
               description: 'Cliente no encontrado',
+              headers: {
+                'X-Correlation-ID': {
+                  description:
+                    'Identificador de correlación para rastrear la solicitud.',
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
+            '500': {
+              description: 'Error interno del servicio.',
+              headers: {
+                'X-Correlation-ID': {
+                  description:
+                    'Identificador para rastrear la solicitud fallida.',
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              },
             },
           },
         },
@@ -76,80 +131,142 @@ describe('GovernanceRuleEngineService', () => {
   };
 
 
+
   it('acepta un contexto de evaluación sin alterar las reglas existentes', () => {
+    // Contexto utilizado por VERSIONING-001 y GOVERNANCE-001
     const context = {
       registeredApiVersion: '1.0.0',
+      apiOwner: 'Equipo Integraciones',
+      apiLifecycleStatus: 'ACTIVE',
+      documentFileName: 'customer-api.yaml',
+      documentUploadedBy: 'system-local',
+      documentIsValid: true,
     };
 
+    // Ejecutar el motor sin contexto
     const withoutContext = engine.execute(
       validSpecification,
     );
 
+    // Ejecutar el motor con contexto
     const withContext = engine.execute(
       validSpecification,
       context,
     );
 
+
+    // Ambas ejecuciones deben evaluar las mismas reglas
+    expect(withContext.totalRules).toBe(18);
+
     expect(withContext.totalRules).toBe(
       withoutContext.totalRules,
     );
 
-    const previousRules = (results: typeof withContext.results) =>
+    // Las reglas independientes del contexto
+    // deben producir exactamente los mismos resultados.
+    const independentRules = (
+      results: typeof withContext.results,
+    ) =>
       results.filter(
-        (rule) => rule.ruleId !== 'VERSIONING-001',
+        (rule) =>
+          rule.ruleId !== 'VERSIONING-001' &&
+          rule.ruleId !== 'GOVERNANCE-001' &&
+          rule.ruleId !== 'GOVERNANCE-002' &&
+          rule.ruleId !== 'GOVERNANCE-003',
       );
 
     expect(
-      previousRules(withContext.results),
+      independentRules(withContext.results),
     ).toEqual(
-      previousRules(withoutContext.results),
+      independentRules(withoutContext.results),
     );
+
 
     expect(
       withContext.results.find(
-        (rule) => rule.ruleId === 'VERSIONING-001',
+        (rule) => rule.ruleId === 'GOVERNANCE-003',
       )?.status,
     ).toBe('PASS');
 
     expect(
       withoutContext.results.find(
-        (rule) => rule.ruleId === 'VERSIONING-001',
+        (rule) => rule.ruleId === 'GOVERNANCE-003',
       )?.status,
     ).toBe('WARNING');
 
 
-    // VERSIONING-001 cambia de WARNING a PASS
-    // cuando recibe una versión coincidente.
+    expect(
+      withContext.results.find(
+        (rule) => rule.ruleId === 'GOVERNANCE-002',
+      )?.status,
+    ).toBe('PASS');
+
+    expect(
+      withoutContext.results.find(
+        (rule) => rule.ruleId === 'GOVERNANCE-002',
+      )?.status,
+    ).toBe('WARNING');
+
+    // VERSIONING-001 debe aprobar cuando
+    // la versión del contexto coincide.
+    const versioningWithContext = withContext.results.find(
+      (rule) => rule.ruleId === 'VERSIONING-001',
+    );
+
+    expect(versioningWithContext?.status).toBe('PASS');
+
+    // VERSIONING-001 debe advertir si no recibe contexto.
+    const versioningWithoutContext = withoutContext.results.find(
+      (rule) => rule.ruleId === 'VERSIONING-001',
+    );
+
+    expect(versioningWithoutContext?.status).toBe('WARNING');
+
+    // GOVERNANCE-001 debe aprobar cuando
+    // la API tiene un responsable asignado.
+    const governanceWithContext = withContext.results.find(
+      (rule) => rule.ruleId === 'GOVERNANCE-001',
+    );
+
+    expect(governanceWithContext?.status).toBe('PASS');
+
+    // GOVERNANCE-001 debe advertir
+    // cuando no recibe información del responsable.
+    const governanceWithoutContext = withoutContext.results.find(
+      (rule) => rule.ruleId === 'GOVERNANCE-001',
+    );
+
+    expect(governanceWithoutContext?.status).toBe('WARNING');
+
+    // Con contexto, dos reglas adicionales pasan:
+    // VERSIONING-001 y GOVERNANCE-001.
     expect(withContext.passedRules).toBe(
-      withoutContext.passedRules + 1,
+      withoutContext.passedRules + 4,
     );
 
-    // Al recibir el contexto desaparece una advertencia.
+    // Sin contexto ambas reglas producen WARNING.
     expect(withContext.warningRules).toBe(
-      withoutContext.warningRules - 1,
+      withoutContext.warningRules - 4,
     );
 
-    // Las demás clasificaciones no cambian.
+    // No deben cambiar los incumplimientos.
     expect(withContext.failedRules).toBe(
       withoutContext.failedRules,
     );
 
+    // Tampoco deben cambiar las reglas no aplicables.
     expect(withContext.notApplicableRules).toBe(
       withoutContext.notApplicableRules,
     );
-
-
-    expect(withContext.failedRules).toBe(
-      withoutContext.failedRules,
-    );
   });
+
 
 
   it('ejecuta las cinco reglas registradas', () => {
     const result = engine.execute(validSpecification);
 
-    expect(result.totalRules).toBe(12);
-    expect(result.results).toHaveLength(12);
+    expect(result.totalRules).toBe(18);
+    expect(result.results).toHaveLength(18);
   });
 
   it('mantiene los identificadores de las reglas', () => {
@@ -168,6 +285,12 @@ describe('GovernanceRuleEngineService', () => {
       'SECURITY-002',
       'SECURITY-003',
       'VERSIONING-001',
+      'VERSIONING-002',
+      'OBSERVABILITY-001',
+      'OBSERVABILITY-002',
+      'GOVERNANCE-001',
+      'GOVERNANCE-002',
+      'GOVERNANCE-003',
     ]);
   });
 
@@ -176,11 +299,17 @@ describe('GovernanceRuleEngineService', () => {
       validSpecification,
       {
         registeredApiVersion: validSpecification.info.version,
+        apiOwner: 'Equipo Integraciones',
+        apiLifecycleStatus: 'ACTIVE',
+        documentFileName: 'customer-api.yaml',
+        documentUploadedBy: 'system-local',
+        documentIsValid: true,
       },
     );
 
 
-    expect(result.passedRules).toBe(10);
+
+    expect(result.passedRules).toBe(16);
     expect(result.failedRules).toBe(0);
     expect(result.warningRules).toBe(0);
     expect(result.notApplicableRules).toBe(2);
@@ -217,6 +346,27 @@ describe('GovernanceRuleEngineService', () => {
     expect(versioning001?.status).toBe('PASS');
 
 
+    const versioning002 = result.results.find(
+      (rule) => rule.ruleId === 'VERSIONING-002',
+    );
+
+    expect(versioning002).toBeDefined();
+    expect(versioning002?.status).toBe('PASS');
+
+    const observability001 = result.results.find(
+      (rule) => rule.ruleId === 'OBSERVABILITY-001',
+    );
+
+    expect(observability001).toBeDefined();
+    expect(observability001?.status).toBe('PASS');
+
+    const observability002 = result.results.find(
+      (rule) => rule.ruleId === 'OBSERVABILITY-002',
+    );
+
+    expect(observability002).toBeDefined();
+    expect(observability002?.status).toBe('PASS');
+
 
     console.log('DOCUMENTATION-002:', {
       status: documentation002?.status,
@@ -224,6 +374,27 @@ describe('GovernanceRuleEngineService', () => {
       evidence: documentation002?.evidence,
       recommendation: documentation002?.recommendation,
     });
+
+    const governance001 = result.results.find(
+      (rule) => rule.ruleId === 'GOVERNANCE-001',
+    );
+
+    expect(governance001).toBeDefined();
+    expect(governance001?.status).toBe('PASS');
+
+    const governance002 = result.results.find(
+      (rule) => rule.ruleId === 'GOVERNANCE-002',
+    );
+
+    expect(governance002).toBeDefined();
+    expect(governance002?.status).toBe('PASS');
+
+    const governance003 = result.results.find(
+      (rule) => rule.ruleId === 'GOVERNANCE-003',
+    );
+
+    expect(governance003).toBeDefined();
+    expect(governance003?.status).toBe('PASS');
 
 
 

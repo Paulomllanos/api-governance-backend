@@ -9,4 +9,21 @@ export interface GovernanceEvaluationContext {
    * con evaluaciones que solo reciben OpenAPI.
    */
   registeredApiVersion?: string;
+
+   /**
+   * Responsable de la API registrado en PostgreSQL.
+   * Utilizado por GOVERNANCE-001.
+   */
+  apiOwner?: string
+
+  /**
+   * Estado del ciclo de vida de la API.
+   * GOVERNANCE-002.
+   */
+  apiLifecycleStatus?: string;
+
+  // GOVERNANCE-003
+  documentFileName?: string;
+  documentUploadedBy?: string;
+  documentIsValid?: boolean;
 }

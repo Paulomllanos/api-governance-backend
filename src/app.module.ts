@@ -10,6 +10,12 @@ import { VersionsModule } from './versions/versions.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
 import { EvaluationsModule } from './evaluations/evaluations.module.js';
 
+import { AuthModule } from './auth/auth.module.js';
+
+import {
+  AuthorizationModule,
+} from './authorization/authorization.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -20,6 +26,8 @@ import { EvaluationsModule } from './evaluations/evaluations.module.js';
     VersionsModule,
     DocumentsModule,
     EvaluationsModule,
+    AuthModule,
+    AuthorizationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

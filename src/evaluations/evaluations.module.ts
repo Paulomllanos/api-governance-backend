@@ -11,8 +11,10 @@ import {
   EvaluationsService,
 } from './evaluations.service.js';
 
+import { AuthorizationModule } from '../authorization/authorization.module.js';
+
 @Module({
-  imports: [GovernanceModule],
+  imports: [AuthorizationModule, GovernanceModule],
   controllers: [EvaluationsController],
   providers: [EvaluationsService],
   exports: [EvaluationsService],
