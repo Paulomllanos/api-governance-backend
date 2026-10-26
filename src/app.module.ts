@@ -16,6 +16,8 @@ import {
   AuthorizationModule,
 } from './authorization/authorization.module.js';
 
+import { WorkflowModule } from './workflow/workflow.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,6 +30,7 @@ import {
     EvaluationsModule,
     AuthModule,
     AuthorizationModule,
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [AppService],
