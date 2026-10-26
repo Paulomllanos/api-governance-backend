@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
-
 import * as argon2 from 'argon2';
 
 import {
@@ -13,6 +12,10 @@ import {
 } from '../authorization/policies/rbac.policy.js';
 
 import { UsersService } from '../users/users.service.js';
+
+import {
+  AuthSessionsService,
+} from './auth-sessions.service.js';
 
 import type {
   AuthenticatedUser,
@@ -23,12 +26,18 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly authSessionsService: AuthSessionsService,
   ) {}
+
+  private async issueAccessToken(userId: string) {
+    return this.jwtService.signAsync({
+      sub: userId,
+    });
+  }
 
   async login(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
 
-    // Mensaje genérico para no revelar si el correo existe.
     if (!user || !user.isActive) {
       throw new UnauthorizedException(
         'Credenciales inválidas.',
@@ -46,27 +55,62 @@ export class AuthService {
       );
     }
 
-    const roles = user.roles
-      .map((assignment) => assignment.role.name)
-      .filter(isAppRole);
-
     const authenticatedUser: AuthenticatedUser = {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
-      roles,
+      roles: user.roles
+        .map((assignment) => assignment.role.name)
+        .filter(isAppRole),
     };
 
-    const accessToken = await this.jwtService.signAsync({
-      sub: user.id,
-    });
+    const accessToken = await this.issueAccessToken(user.id);
+
+    const session =
+      await this.authSessionsService.createSession(user.id);
+
+    // El controlador enviará el refresh token
+    // únicamente mediante una cookie HttpOnly.
+    return {
+      response: {
+        accessToken,
+        tokenType: 'Bearer' as const,
+        expiresIn: 900,
+        user: authenticatedUser,
+      },
+      refreshToken: session.refreshToken,
+      refreshExpiresAt: session.expiresAt,
+    };
+  }
+
+  async refresh(refreshToken: string) {
+    const session =
+      await this.authSessionsService.rotateSession(refreshToken);
+
+    const user = await this.getAuthenticatedUser(
+      session.userId,
+    );
+
+    const accessToken = await this.issueAccessToken(
+      user.id,
+    );
 
     return {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn: 900,
-      user: authenticatedUser,
+      response: {
+        accessToken,
+        tokenType: 'Bearer' as const,
+        expiresIn: 900,
+        user,
+      },
+      refreshToken: session.refreshToken,
+      refreshExpiresAt: session.expiresAt,
     };
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    await this.authSessionsService.revokeSession(
+      refreshToken,
+    );
   }
 
   async getAuthenticatedUser(

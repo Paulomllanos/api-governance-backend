@@ -12,6 +12,10 @@ import { AuthService } from './auth.service.js';
 
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
+import {
+  AuthSessionsService,
+} from './auth-sessions.service.js';
+
 @Module({
   imports: [
     ConfigModule,
@@ -55,6 +59,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
   providers: [
     AuthService,
+    AuthSessionsService,
     JwtAuthGuard,
   ],
 

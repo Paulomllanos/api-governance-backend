@@ -13,6 +13,10 @@ import {
 import { VersionsService } from './versions.service.js';
 import { CreateVersionDto } from './dto/create-version.dto.js';
 
+import {
+  RequirePermissions,
+} from '../authorization/decorators/require-permissions.decorator.js';
+
 @Controller('apis/:apiId/versions')
 export class VersionsController {
   constructor(
@@ -20,6 +24,7 @@ export class VersionsController {
   ) {}
 
   @Get()
+  @RequirePermissions('versions:read')
   findAll(
     @Param('apiId', new ParseUUIDPipe()) apiId: string,
   ) {
@@ -27,6 +32,7 @@ export class VersionsController {
   }
 
   @Get(':versionId')
+  @RequirePermissions('versions:read')
   findOne(
     @Param('apiId', new ParseUUIDPipe()) apiId: string,
     @Param('versionId', new ParseUUIDPipe()) versionId: string,
@@ -35,6 +41,7 @@ export class VersionsController {
   }
 
   @Post()
+  @RequirePermissions('versions:create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Param('apiId', new ParseUUIDPipe()) apiId: string,

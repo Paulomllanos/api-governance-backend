@@ -93,4 +93,34 @@ describe('RBAC Policy', () => {
       }
     }
   });
+
+
+  it('permite consultar documentos a los tres roles', () => {
+    for (const role of APP_ROLES) {
+      expect(
+        hasPermission(role, 'documents:read'),
+      ).toBe(true);
+    }
+  });
+
+  it('permite cargar documentos a ADMIN y DEVELOPER', () => {
+    expect(
+      hasPermission('ADMIN', 'documents:upload'),
+    ).toBe(true);
+
+    expect(
+      hasPermission('DEVELOPER', 'documents:upload'),
+    ).toBe(true);
+  });
+
+  it('impide al REVIEWER crear versiones o cargar documentos', () => {
+    expect(
+      hasPermission('REVIEWER', 'versions:create'),
+    ).toBe(false);
+
+    expect(
+      hasPermission('REVIEWER', 'documents:upload'),
+    ).toBe(false);
+  });
+
 });

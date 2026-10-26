@@ -48,6 +48,15 @@ enum GovernanceRuleSeverity {
   CRITICAL
 }
 
+enum WorkflowStatus {
+  DRAFT
+  IN_REVIEW
+  OBSERVED
+  CORRECTED
+  APPROVED
+  PUBLISHED
+}
+
 model Api {
   id          String             @id @default(uuid())
   name        String
@@ -75,7 +84,9 @@ model ApiVersion {
 
   api Api @relation(fields: [apiId], references: [id], onDelete: Restrict)
 
-  documents OpenApiDocument[]
+  documents       OpenApiDocument[]
+  workflowStatus  WorkflowStatus       @default(DRAFT)
+  workflowHistory WorkflowTransition[]
 
   @@unique([apiId, version])
   @@index([apiId])
@@ -165,7 +176,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  roles UserRole[]
+  roles    UserRole[]
+  sessions AuthSession[]
+
+  workflowTransitions WorkflowTransition[]
 
   @@index([isActive])
 }
@@ -190,4 +204,49 @@ model UserRole {
 
   @@id([userId, roleId])
   @@index([roleId])
+}
+
+model AuthSession {
+  id String @id @default(uuid())
+
+  userId String
+
+  // Hash SHA-256 del refresh token.
+  // El token original nunca se guarda en PostgreSQL.
+  refreshTokenHash String @unique @db.VarChar(64)
+
+  // Control del ciclo de vida de la sesión.
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model WorkflowTransition {
+  id String @id @default(uuid())
+
+  versionId     String
+  performedById String
+
+  fromStatus WorkflowStatus
+  toStatus   WorkflowStatus
+
+  comment String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  apiVersion ApiVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  performedBy User @relation(fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([versionId, createdAt])
+  @@index([performedById])
+  @@map("workflow_transitions")
 }

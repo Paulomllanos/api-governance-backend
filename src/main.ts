@@ -7,6 +7,8 @@ import { AppModule } from './app.module.js';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
+import cookieParser from 'cookie-parser';
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
@@ -25,12 +27,15 @@ async function bootstrap() {
     'http://localhost:5173',
   );
 
+  app.use(cookieParser());
+
   // Prefijo global de nuestra API REST
   app.setGlobalPrefix('api/v1');
 
   // Configuración CORS para React
   app.enableCors({
     origin: frontendUrl,
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });

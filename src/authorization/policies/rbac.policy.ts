@@ -15,6 +15,7 @@ export const APP_PERMISSIONS = [
   'versions:read',
   'versions:create',
 
+  'documents:read',
   'documents:upload',
 
   'evaluations:create',
@@ -46,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<
     'evaluations:read',
     'reviews:approve',
     'reviews:reject',
+    'documents:read',
   ],
 
   DEVELOPER: [
@@ -55,6 +57,7 @@ export const ROLE_PERMISSIONS: Record<
     'versions:read',
     'versions:create',
     'documents:upload',
+    'documents:read',
     'evaluations:create',
     'evaluations:read',
     'reviews:request',

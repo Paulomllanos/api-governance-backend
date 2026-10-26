@@ -22,7 +22,7 @@ export class DocumentsController {
   ) {}
 
   @Post('versions/:versionId/documents')
-  @RequirePermissions('versions:create')
+  @RequirePermissions('documents:upload')
   create(
     @Param('versionId', new ParseUUIDPipe()) versionId: string,
     @Body() data: CreateDocumentDto,
@@ -39,6 +39,7 @@ export class DocumentsController {
   }
 
   @Get('documents/:documentId')
+  @RequirePermissions('documents:read')
   findOne(
     @Param('documentId', new ParseUUIDPipe()) documentId: string,
   ) {
