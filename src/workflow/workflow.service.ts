@@ -22,6 +22,16 @@ import type {
 
 const EXPECTED_RULES = 18;
 
+
+interface ApprovalEvidence {
+    evaluationId: string;
+    documentId: string;
+    qualityScore: number;
+    totalRules: number;
+    hasBlockingIssues: false;
+}
+
+
 interface ChangeWorkflowStatusInput {
     apiId: string;
     versionId: string;
@@ -103,15 +113,14 @@ export class WorkflowService {
                         );
                     }
 
-                    if (rule.requiresApprovedEvaluation) {
-                        await this.validateEvaluation(
-                            tx,
-                            version.id,
-                        );
-                    }
 
-                    // Actualización condicional:
-                    // solo se cambia si conserva el estado leído.
+                    const approvalEvidence =
+                        rule.requiresApprovedEvaluation
+                            ? await this.validateEvaluation(tx, version.id)
+                            : null;
+
+
+
                     const updated = await tx.apiVersion.updateMany({
                         where: {
                             id: version.id,
@@ -120,14 +129,22 @@ export class WorkflowService {
                         },
                         data: {
                             workflowStatus: input.toStatus,
+
+                            ...(input.toStatus === 'PUBLISHED'
+                                ? {
+                                    status: 'ACTIVE',
+                                }
+                                : {}),
                         },
                     });
+
 
                     if (updated.count !== 1) {
                         throw new ConflictException(
                             'La versión cambió de estado durante la operación.',
                         );
                     }
+
 
                     const transition =
                         await tx.workflowTransition.create({
@@ -137,8 +154,30 @@ export class WorkflowService {
                                 fromStatus: version.workflowStatus,
                                 toStatus: input.toStatus,
                                 comment,
+
+                                // Evidencia asociada exclusivamente
+                                // a la transición de aprobación.
+                                ...(approvalEvidence
+                                    ? {
+                                        evaluationId:
+                                            approvalEvidence.evaluationId,
+
+                                        evaluatedDocumentId:
+                                            approvalEvidence.documentId,
+
+                                        evaluationScore:
+                                            approvalEvidence.qualityScore,
+
+                                        evaluatedRules:
+                                            approvalEvidence.totalRules,
+
+                                        evaluationHasBlockingIssues:
+                                            approvalEvidence.hasBlockingIssues,
+                                    }
+                                    : {}),
                             },
                         });
+
 
                     return {
                         versionId: version.id,
@@ -169,7 +208,7 @@ export class WorkflowService {
     private async validateEvaluation(
         tx: Prisma.TransactionClient,
         versionId: string,
-    ): Promise<void> {
+    ): Promise<ApprovalEvidence> {
         // Seleccionar el documento más reciente.
         const document = await tx.openApiDocument.findFirst({
             where: {
@@ -247,6 +286,16 @@ export class WorkflowService {
                 'La versión contiene hallazgos bloqueantes o no tiene una verificación concluyente.',
             );
         }
+
+
+        return {
+            evaluationId: evaluation.id,
+            documentId: document.id,
+            qualityScore: evaluation.qualityScore,
+            totalRules: evaluation.totalRules,
+            hasBlockingIssues: false,
+        };
+
     }
 
 
@@ -294,6 +343,13 @@ export class WorkflowService {
                             email: true,
                         },
                     },
+
+                    evaluationId: true,
+                    evaluatedDocumentId: true,
+                    evaluationScore: true,
+                    evaluatedRules: true,
+                    evaluationHasBlockingIssues: true,
+
                 },
             });
 

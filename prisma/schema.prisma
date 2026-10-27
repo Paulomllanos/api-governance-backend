@@ -134,8 +134,9 @@ model GovernanceExecution {
 
   errorMessage String? @db.Text
 
-  document OpenApiDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
-  results  RuleResult[]
+  document          OpenApiDocument      @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  results           RuleResult[]
+  workflowApprovals WorkflowTransition[]
 
   @@index([documentId, requestedAt])
   @@index([status])
@@ -246,6 +247,18 @@ model WorkflowTransition {
 
   performedBy User @relation(fields: [performedById], references: [id], onDelete: Restrict)
 
+  // Evidencia histórica de aprobación.
+  // Se mantiene opcional para conservar
+  // las transiciones existentes.
+  evaluationId                String?
+  evaluatedDocumentId         String?
+  evaluationScore             Float?
+  evaluatedRules              Int?
+  evaluationHasBlockingIssues Boolean?
+
+  evaluation GovernanceExecution? @relation(fields: [evaluationId], references: [id], onDelete: Restrict)
+
+  @@index([evaluationId])
   @@index([versionId, createdAt])
   @@index([performedById])
   @@map("workflow_transitions")
