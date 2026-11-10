@@ -20,6 +20,8 @@ import { WorkflowModule } from './workflow/workflow.module.js';
 
 import { FindingsModule } from './findings/findings.module.js';
 
+import { AuditModule } from './audit/audit.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -34,6 +36,7 @@ import { FindingsModule } from './findings/findings.module.js';
     AuthorizationModule,
     WorkflowModule,
     FindingsModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
