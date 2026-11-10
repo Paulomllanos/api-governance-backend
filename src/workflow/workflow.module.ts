@@ -13,6 +13,14 @@ import {
   WorkflowService,
 } from './workflow.service.js';
 
+import {
+  ReviewQueueController,
+} from './review-queue.controller.js';
+
+import {
+  ReviewQueueService,
+} from './review-queue.service.js';
+
 @Module({
   imports: [
     AuthorizationModule,
@@ -20,10 +28,12 @@ import {
 
   controllers: [
     WorkflowController,
+    ReviewQueueController,
   ],
 
   providers: [
     WorkflowService,
+    ReviewQueueService,
   ],
 
   exports: [

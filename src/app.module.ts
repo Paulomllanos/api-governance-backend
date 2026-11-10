@@ -18,6 +18,8 @@ import {
 
 import { WorkflowModule } from './workflow/workflow.module.js';
 
+import { FindingsModule } from './findings/findings.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -31,6 +33,7 @@ import { WorkflowModule } from './workflow/workflow.module.js';
     AuthModule,
     AuthorizationModule,
     WorkflowModule,
+    FindingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
