@@ -146,6 +146,19 @@ export class WorkflowService {
                     }
 
 
+                    if (input.toStatus === 'PUBLISHED') {
+                        await tx.api.update({
+                            where: {
+                                id: input.apiId,
+                            },
+                            data: {
+                                status: 'ACTIVE',
+                            },
+                        });
+                    }
+
+
+
                     const transition =
                         await tx.workflowTransition.create({
                             data: {
