@@ -22,6 +22,10 @@ import { FindingsModule } from './findings/findings.module.js';
 
 import { AuditModule } from './audit/audit.module.js';
 
+import {
+  DashboardModule,
+} from './dashboard/dashboard.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -37,6 +41,7 @@ import { AuditModule } from './audit/audit.module.js';
     WorkflowModule,
     FindingsModule,
     AuditModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
