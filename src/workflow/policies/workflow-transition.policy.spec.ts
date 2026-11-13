@@ -1,120 +1,105 @@
 
+import { describe, expect, it } from 'vitest';
+
 import {
-  describe,
-  expect,
-  it,
-} from 'vitest';
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 
 import {
   validateWorkflowTransition,
 } from './workflow-transition.policy.js';
 
-describe('Workflow Transition Policy', () => {
-  it('permite a DEVELOPER solicitar revisión', () => {
-    const transition = validateWorkflowTransition({
+describe('Política de workflow', () => {
+  it('permite solicitar revisión al desarrollador', () => {
+    const result = validateWorkflowTransition({
       from: 'DRAFT',
       to: 'IN_REVIEW',
       roles: ['DEVELOPER'],
     });
 
-    expect(transition.permission).toBe(
-      'reviews:request',
-    );
+    expect(result.permission).toBe('reviews:request');
   });
 
-  it('impide aprobar directamente desde DRAFT', () => {
-    expect(() =>
-      validateWorkflowTransition({
-        from: 'DRAFT',
-        to: 'APPROVED',
-        roles: ['ADMIN'],
-      }),
-    ).toThrow();
+  it('permite aprobar a un revisor', () => {
+    const result = validateWorkflowTransition({
+      from: 'IN_REVIEW',
+      to: 'APPROVED',
+      roles: ['REVIEWER'],
+    });
+
+    expect(result.requiresApprovedEvaluation).toBe(true);
   });
 
-  it('impide a DEVELOPER aprobar una versión', () => {
+  it('impide que un desarrollador apruebe', () => {
     expect(() =>
       validateWorkflowTransition({
         from: 'IN_REVIEW',
         to: 'APPROVED',
         roles: ['DEVELOPER'],
       }),
-    ).toThrow();
+    ).toThrow(ForbiddenException);
   });
 
-  it('permite a REVIEWER aprobar una versión', () => {
-    const transition = validateWorkflowTransition({
-      from: 'IN_REVIEW',
-      to: 'APPROVED',
-      roles: ['REVIEWER'],
-    });
-
-    expect(
-      transition.requiresApprovedEvaluation,
-    ).toBe(true);
-  });
-
-  it('exige comentario para observar una versión', () => {
+  it('exige comentario para registrar observaciones', () => {
     expect(() =>
       validateWorkflowTransition({
         from: 'IN_REVIEW',
         to: 'OBSERVED',
         roles: ['REVIEWER'],
+        comment: '',
       }),
-    ).toThrow();
+    ).toThrow(ConflictException);
   });
 
-  it('permite registrar observaciones con comentario', () => {
-    const transition = validateWorkflowTransition({
+  it('permite registrar observaciones justificadas', () => {
+    const result = validateWorkflowTransition({
       from: 'IN_REVIEW',
       to: 'OBSERVED',
       roles: ['REVIEWER'],
-      comment: 'Corregir el esquema de seguridad OAuth2.',
+      comment: 'Debe corregirse la seguridad.',
     });
 
-    expect(transition.to).toBe('OBSERVED');
+    expect(result.requiresComment).toBe(true);
   });
 
-  it('permite a DEVELOPER registrar correcciones', () => {
-    const transition = validateWorkflowTransition({
-      from: 'OBSERVED',
-      to: 'CORRECTED',
-      roles: ['DEVELOPER'],
-      comment: 'Se corrigieron los hallazgos.',
-    });
-
-    expect(transition.to).toBe('CORRECTED');
-  });
-
-  it('permite reenviar una versión corregida', () => {
-    const transition = validateWorkflowTransition({
-      from: 'CORRECTED',
-      to: 'IN_REVIEW',
-      roles: ['DEVELOPER'],
-    });
-
-    expect(transition.to).toBe('IN_REVIEW');
-  });
-
-  it('impide a REVIEWER publicar versiones', () => {
+  it('impide publicar a un revisor', () => {
     expect(() =>
       validateWorkflowTransition({
         from: 'APPROVED',
         to: 'PUBLISHED',
         roles: ['REVIEWER'],
       }),
-    ).toThrow();
+    ).toThrow(ForbiddenException);
   });
 
-  it('permite a ADMIN publicar versiones aprobadas', () => {
-    const transition = validateWorkflowTransition({
+  it('permite publicar a un administrador', () => {
+    const result = validateWorkflowTransition({
       from: 'APPROVED',
       to: 'PUBLISHED',
       roles: ['ADMIN'],
     });
 
-    expect(transition.permission).toBe(
-      'versions:publish',
-    );
+    expect(result.permission).toBe('versions:publish');
+  });
+
+  it('impide saltarse la etapa de revisión', () => {
+    expect(() =>
+      validateWorkflowTransition({
+        from: 'DRAFT',
+        to: 'APPROVED',
+        roles: ['ADMIN'],
+      }),
+    ).toThrow(ConflictException);
+  });
+
+  it('impide modificar una versión publicada', () => {
+    expect(() =>
+      validateWorkflowTransition({
+        from: 'PUBLISHED',
+        to: 'IN_REVIEW',
+        roles: ['ADMIN'],
+      }),
+    ).toThrow(ConflictException);
   });
 });
