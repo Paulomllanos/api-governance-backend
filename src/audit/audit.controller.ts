@@ -15,11 +15,15 @@ import {
   AuditService,
 } from './audit.service.js';
 
+import type {
+  AuditFilters,
+} from './audit.service.js';
+
 @Controller('audit')
 export class AuditController {
   constructor(
     private readonly auditService: AuditService,
-  ) {}
+  ) { }
 
   @Get()
   @RequirePermissions('versions:read')
@@ -37,7 +41,29 @@ export class AuditController {
       ParseIntPipe,
     )
     limit: number,
+    @Query('search') search?: string,
+    @Query('api') api?: string,
+    @Query('user') user?: string,
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+
   ) {
-    return this.auditService.findAll(page, limit);
+
+    const filters: AuditFilters = {
+      search,
+      api,
+      user,
+      status,
+      from,
+      to,
+    };
+
+    return this.auditService.findAll(
+      page,
+      limit,
+      filters,
+    );
+
   }
 }
