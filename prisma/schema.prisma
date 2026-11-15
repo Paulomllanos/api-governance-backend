@@ -182,6 +182,8 @@ model User {
 
   workflowTransitions WorkflowTransition[]
 
+  notificationReads NotificationRead[]
+
   @@index([isActive])
 }
 
@@ -258,8 +260,23 @@ model WorkflowTransition {
 
   evaluation GovernanceExecution? @relation(fields: [evaluationId], references: [id], onDelete: Restrict)
 
+  notificationReads NotificationRead[]
+
   @@index([evaluationId])
   @@index([versionId, createdAt])
   @@index([performedById])
   @@map("workflow_transitions")
+}
+
+model NotificationRead {
+  id           String             @id @default(uuid())
+  userId       String
+  transitionId String
+  readAt       DateTime           @default(now())
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transition   WorkflowTransition @relation(fields: [transitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, transitionId])
+  @@index([transitionId])
+  @@map("notification_reads")
 }

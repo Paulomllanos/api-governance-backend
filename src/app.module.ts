@@ -1,3 +1,7 @@
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { SearchModule } from './search/search.module.js';
+import { ProfileModule } from './profile/profile.module.js';
+import { AdminUsersModule } from './admin-users/admin-users.module.js';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -28,8 +32,14 @@ import {
 
 import { UsersModule } from './users/users.module.js';
 
+
+
 @Module({
   imports: [
+    NotificationsModule,
+    SearchModule,
+    ProfileModule,
+    AdminUsersModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
