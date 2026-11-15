@@ -204,18 +204,32 @@ export class WorkflowService {
                         Prisma.TransactionIsolationLevel.Serializable,
                 },
             );
+
         } catch (error: unknown) {
             if (
-                error instanceof Prisma.PrismaClientKnownRequestError &&
-                error.code === 'P2034'
+                error instanceof Prisma.PrismaClientKnownRequestError
             ) {
-                throw new ConflictException(
-                    'Se detectó una operación concurrente. Intenta nuevamente.',
-                );
+                const isTransactionConflict =
+                    error.code === 'P2034';
+
+                const isSerializationConflict =
+                    error.code === 'P2010' &&
+                    error.meta?.code === '40001';
+
+                if (
+                    isTransactionConflict ||
+                    isSerializationConflict
+                ) {
+                    throw new ConflictException(
+                        'Se detectó una operación concurrente. ' +
+                        'Intenta nuevamente.',
+                    );
+                }
             }
 
             throw error;
         }
+
     }
 
     private async validateEvaluation(

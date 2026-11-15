@@ -14,7 +14,7 @@ import type { AppRole } from '../authorization/policies/rbac.policy.js';
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
@@ -118,4 +118,31 @@ export class UsersService {
       },
     });
   }
+
+
+  async findAll() {
+    return this.prisma.user.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        roles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
 }

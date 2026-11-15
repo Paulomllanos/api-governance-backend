@@ -26,6 +26,8 @@ import {
   DashboardModule,
 } from './dashboard/dashboard.module.js';
 
+import { UsersModule } from './users/users.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -42,6 +44,7 @@ import {
     FindingsModule,
     AuditModule,
     DashboardModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
