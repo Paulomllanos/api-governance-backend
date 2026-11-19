@@ -73,12 +73,25 @@ export class EvaluationsService {
             throw new ForbiddenException('El solicitante no está activo.');
         }
 
-        return this.prisma.governanceExecution.create({
-            data: {
-                documentId,
-                executedBy: actor.id,
-                status: 'PENDING',
-            },
+        return this.prisma.$transaction(async (tx) => {
+            const evaluation = await tx.governanceExecution.create({
+                data: {
+                    documentId,
+                    executedBy: actor.id,
+                    status: 'PENDING',
+                },
+            });
+            await tx.auditEvent.create({
+                data: {
+                    actorId: actor.id,
+                    action: 'EVALUATION_REQUESTED',
+                    entityType: 'EVALUATION',
+                    entityId: evaluation.id,
+                    apiId: null,
+                    detail: { documentId },
+                },
+            });
+            return evaluation;
         });
     }
 
@@ -282,6 +295,21 @@ export class EvaluationsService {
                         hasBlockingIssues: scoreResult.hasBlockingIssues,
                     },
                 });
+                await tx.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_COMPLETED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: {
+                            documentId: execution.documentId,
+                            totalRules: result.totalRules,
+                            failedRules: result.failedRules,
+                            qualityScore: scoreResult.score,
+                            hasBlockingIssues: scoreResult.hasBlockingIssues,
+                        },
+                    },
+                });
             });
 
             return this.findOne(id);
@@ -291,14 +319,25 @@ export class EvaluationsService {
                     ? error.message
                     : 'Error técnico desconocido.';
 
-            await this.prisma.governanceExecution.update({
-                where: { id },
-                data: {
-                    status: 'FAILED',
-                    completedAt: new Date(),
-                    errorMessage: errorMessage.slice(0, 2000),
-                },
-            });
+            await this.prisma.$transaction([
+                this.prisma.governanceExecution.update({
+                    where: { id },
+                    data: {
+                        status: 'FAILED',
+                        completedAt: new Date(),
+                        errorMessage: errorMessage.slice(0, 2000),
+                    },
+                }),
+                this.prisma.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_FAILED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: { documentId: execution.documentId },
+                    },
+                }),
+            ]);
 
             throw new InternalServerErrorException(
                 'No fue posible completar la evaluación. ' +
