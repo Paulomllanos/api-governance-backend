@@ -1,12 +1,14 @@
 
 import {
     Injectable,
+    ForbiddenException,
     NotFoundException,
     ConflictException,
     InternalServerErrorException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
 
 import { parseDocument } from 'yaml';
 
@@ -50,7 +52,7 @@ export class EvaluationsService {
         private readonly engine: GovernanceRuleEngineService,
     ) { }
 
-    async create(documentId: string) {
+    async create(documentId: string, actor: AuthenticatedUser) {
         const document =
             await this.prisma.openApiDocument.findUnique({
                 where: { id: documentId },
@@ -63,17 +65,25 @@ export class EvaluationsService {
             );
         }
 
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El solicitante no está activo.');
+        }
+
         return this.prisma.governanceExecution.create({
             data: {
                 documentId,
-                executedBy: 'system-local',
+                executedBy: actor.id,
                 status: 'PENDING',
             },
         });
     }
 
 
-    async execute(id: string) {
+    async execute(id: string, actor: AuthenticatedUser) {
         const execution =
             await this.prisma.governanceExecution.findUnique({
                 where: { id },
@@ -105,6 +115,22 @@ export class EvaluationsService {
             throw new NotFoundException(
                 'La evaluación solicitada no existe.',
             );
+        }
+
+        // No atribuir una ejecución a un usuario distinto del solicitante.
+        // El administrador puede ejecutar evaluaciones pendientes de otros usuarios.
+        if (execution.executedBy !== actor.id && !actor.roles.includes('ADMIN')) {
+            throw new ForbiddenException(
+                'Solo el solicitante o un administrador puede ejecutar esta evaluación.',
+            );
+        }
+
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El usuario no está activo.');
         }
 
         if (execution.status !== 'PENDING') {
