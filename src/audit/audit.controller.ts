@@ -26,7 +26,7 @@ export class AuditController {
   ) { }
 
   @Get('activity')
-  @RequirePermissions('versions:read')
+  @RequirePermissions('users:read')
   findActivity(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
