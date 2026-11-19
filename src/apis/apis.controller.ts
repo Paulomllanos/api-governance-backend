@@ -7,7 +7,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
+
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard.js';
 
 import { ApisService } from './apis.service.js';
 import { CreateApiDto } from './dto/create-api.dto.js';
@@ -39,8 +42,8 @@ export class ApisController {
 
   @Post()
   @RequirePermissions('apis:create')
-  create(@Body() data: CreateApiDto) {
-    return this.apisService.create(data);
+  create(@Body() data: CreateApiDto, @Req() request: AuthenticatedRequest) {
+    return this.apisService.create(data, request.user!);
   }
 
   @Patch(':id')
@@ -48,7 +51,8 @@ export class ApisController {
   update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() data: UpdateApiDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.apisService.update(id, data);
+    return this.apisService.update(id, data, request.user!);
   }
 }
