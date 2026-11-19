@@ -7,6 +7,7 @@ import {
 
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
 import { CreateVersionDto } from './dto/create-version.dto.js';
 
 @Injectable()
@@ -56,19 +57,32 @@ export class VersionsService {
     return version;
   }
 
-  async create(apiId: string, data: CreateVersionDto) {
+  async create(apiId: string, data: CreateVersionDto, actor: AuthenticatedUser) {
     await this.ensureApiExists(apiId);
 
     const versionNumber = data.version.trim();
 
     try {
-      return await this.prisma.apiVersion.create({
-        data: {
-          apiId,
-          version: versionNumber,
-          description: data.description.trim(),
-          status: 'DRAFT',
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        const version = await tx.apiVersion.create({
+          data: {
+            apiId,
+            version: versionNumber,
+            description: data.description.trim(),
+            status: 'DRAFT',
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            action: 'API_VERSION_CREATED',
+            entityType: 'API_VERSION',
+            entityId: version.id,
+            apiId,
+            detail: { version: versionNumber },
+          },
+        });
+        return version;
       });
     } catch (error: unknown) {
       if (

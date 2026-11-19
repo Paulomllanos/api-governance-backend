@@ -91,6 +91,48 @@ function validateOpenApi(
     );
   }
 
+  // Controles estructurales adicionales previos a la evaluación de gobierno.
+  // No reemplazan una validación integral contra el esquema OpenAPI.
+  if (parsed.components !== undefined && !isObject(parsed.components)) {
+    throw new BadRequestException('components debe ser un objeto.');
+  }
+  if (parsed.security !== undefined && !Array.isArray(parsed.security)) {
+    throw new BadRequestException('security debe ser un arreglo.');
+  }
+  if (parsed.servers !== undefined && !Array.isArray(parsed.servers)) {
+    throw new BadRequestException('servers debe ser un arreglo.');
+  }
+
+  const HTTP_METHODS = new Set([
+    'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace',
+  ]);
+  for (const [path, pathItem] of Object.entries(parsed.paths)) {
+    if (!path.startsWith('/')) {
+      throw new BadRequestException(`La ruta ${path} debe comenzar con /.`);
+    }
+    if (!isObject(pathItem)) {
+      throw new BadRequestException(`La ruta ${path} debe contener un objeto.`);
+    }
+    if (pathItem.parameters !== undefined && !Array.isArray(pathItem.parameters)) {
+      throw new BadRequestException(`parameters de ${path} debe ser un arreglo.`);
+    }
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!HTTP_METHODS.has(method)) continue;
+      if (!isObject(operation)) {
+        throw new BadRequestException(`${method.toUpperCase()} ${path} debe ser un objeto.`);
+      }
+      if (operation.responses !== undefined && !isObject(operation.responses)) {
+        throw new BadRequestException(`responses de ${method.toUpperCase()} ${path} debe ser un objeto.`);
+      }
+      if (operation.parameters !== undefined && !Array.isArray(operation.parameters)) {
+        throw new BadRequestException(`parameters de ${method.toUpperCase()} ${path} debe ser un arreglo.`);
+      }
+      if (operation.security !== undefined && !Array.isArray(operation.security)) {
+        throw new BadRequestException(`security de ${method.toUpperCase()} ${path} debe ser un arreglo.`);
+      }
+    }
+  }
+
   return openApiVersion;
 }
 
@@ -193,6 +235,7 @@ export class DocumentsService {
             },
             select: {
               workflowStatus: true,
+              apiId: true,
             },
           });
 
@@ -230,7 +273,7 @@ export class DocumentsService {
             );
           }
 
-          return tx.openApiDocument.create({
+          const document = await tx.openApiDocument.create({
             data: {
               versionId,
               fileName,
@@ -241,6 +284,17 @@ export class DocumentsService {
               uploadedBy: actor.id,
             },
           });
+          await tx.auditEvent.create({
+            data: {
+              actorId: actor.id,
+              action: 'OPENAPI_DOCUMENT_UPLOADED',
+              entityType: 'OPENAPI_DOCUMENT',
+              entityId: document.id,
+              apiId: version.apiId,
+              detail: { fileName, openApiVersion },
+            },
+          });
+          return document;
         },
         {
           isolationLevel:

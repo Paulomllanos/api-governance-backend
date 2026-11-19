@@ -455,13 +455,13 @@ describe('Seguridad, integridad y concurrencia', () => {
                 .post(
                     `${PREFIX}/evaluations/${evaluation.id}/execute`,
                 )
-                .set('Authorization', `Bearer ${developerToken}`),
+                .set('Authorization', `Bearer ${adminToken}`),
 
             request(app.getHttpServer())
                 .post(
                     `${PREFIX}/evaluations/${evaluation.id}/execute`,
                 )
-                .set('Authorization', `Bearer ${developerToken}`),
+                .set('Authorization', `Bearer ${adminToken}`),
         ]);
 
 

@@ -14,7 +14,7 @@ export class AdminUsersController {
 
   @Post()
   @RequirePermissions('users:manage')
-  create(@Body() body: CreateManagedUserDto) { return this.users.createUser(body); }
+  create(@Body() body: CreateManagedUserDto, @Req() req: AuthenticatedRequest) { return this.users.createUser(body, req.user!.id); }
 
   @Patch(':id')
   @RequirePermissions('users:manage')

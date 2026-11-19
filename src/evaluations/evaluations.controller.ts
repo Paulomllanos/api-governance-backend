@@ -5,7 +5,10 @@ import {
     Param,
     ParseUUIDPipe,
     Post,
+    Req,
 } from '@nestjs/common';
+
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard.js';
 
 import { EvaluationsService } from './evaluations.service.js';
 
@@ -24,8 +27,9 @@ export class EvaluationsController {
     create(
         @Param('documentId', ParseUUIDPipe)
         documentId: string,
+        @Req() request: AuthenticatedRequest,
     ) {
-        return this.evaluationsService.create(documentId);
+        return this.evaluationsService.create(documentId, request.user!);
     }
 
     @Get('documents/:documentId/evaluations')
@@ -60,8 +64,9 @@ export class EvaluationsController {
     execute(
         @Param('id', ParseUUIDPipe)
         id: string,
+        @Req() request: AuthenticatedRequest,
     ) {
-        return this.evaluationsService.execute(id);
+        return this.evaluationsService.execute(id, request.user!);
     }
 
 }

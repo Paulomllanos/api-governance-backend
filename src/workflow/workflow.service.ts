@@ -192,6 +192,24 @@ export class WorkflowService {
                         });
 
 
+                    await tx.auditEvent.create({
+                        data: {
+                            actorId: input.actor.id,
+                            action: 'WORKFLOW_TRANSITION',
+                            entityType: 'API_VERSION',
+                            entityId: version.id,
+                            apiId: input.apiId,
+                            detail: {
+                                fromStatus: version.workflowStatus,
+                                toStatus: input.toStatus,
+                                transitionId: transition.id,
+                                ...(approvalEvidence
+                                    ? { evaluationId: approvalEvidence.evaluationId }
+                                    : {}),
+                            },
+                        },
+                    });
+
                     return {
                         versionId: version.id,
                         previousStatus: version.workflowStatus,

@@ -8,7 +8,10 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
 } from '@nestjs/common';
+
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard.js';
 
 import { VersionsService } from './versions.service.js';
 import { CreateVersionDto } from './dto/create-version.dto.js';
@@ -46,7 +49,8 @@ export class VersionsController {
   create(
     @Param('apiId', new ParseUUIDPipe()) apiId: string,
     @Body() data: CreateVersionDto,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.versionsService.create(apiId, data);
+    return this.versionsService.create(apiId, data, request.user!);
   }
 }

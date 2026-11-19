@@ -1,12 +1,14 @@
 
 import {
     Injectable,
+    ForbiddenException,
     NotFoundException,
     ConflictException,
     InternalServerErrorException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
 
 import { parseDocument } from 'yaml';
 
@@ -50,7 +52,7 @@ export class EvaluationsService {
         private readonly engine: GovernanceRuleEngineService,
     ) { }
 
-    async create(documentId: string) {
+    async create(documentId: string, actor: AuthenticatedUser) {
         const document =
             await this.prisma.openApiDocument.findUnique({
                 where: { id: documentId },
@@ -63,17 +65,38 @@ export class EvaluationsService {
             );
         }
 
-        return this.prisma.governanceExecution.create({
-            data: {
-                documentId,
-                executedBy: 'system-local',
-                status: 'PENDING',
-            },
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El solicitante no está activo.');
+        }
+
+        return this.prisma.$transaction(async (tx) => {
+            const evaluation = await tx.governanceExecution.create({
+                data: {
+                    documentId,
+                    executedBy: actor.id,
+                    status: 'PENDING',
+                },
+            });
+            await tx.auditEvent.create({
+                data: {
+                    actorId: actor.id,
+                    action: 'EVALUATION_REQUESTED',
+                    entityType: 'EVALUATION',
+                    entityId: evaluation.id,
+                    apiId: null,
+                    detail: { documentId },
+                },
+            });
+            return evaluation;
         });
     }
 
 
-    async execute(id: string) {
+    async execute(id: string, actor: AuthenticatedUser) {
         const execution =
             await this.prisma.governanceExecution.findUnique({
                 where: { id },
@@ -105,6 +128,22 @@ export class EvaluationsService {
             throw new NotFoundException(
                 'La evaluación solicitada no existe.',
             );
+        }
+
+        // No atribuir una ejecución a un usuario distinto del solicitante.
+        // El administrador puede ejecutar evaluaciones pendientes de otros usuarios.
+        if (execution.executedBy !== actor.id && !actor.roles.includes('ADMIN')) {
+            throw new ForbiddenException(
+                'Solo el solicitante o un administrador puede ejecutar esta evaluación.',
+            );
+        }
+
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El usuario no está activo.');
         }
 
         if (execution.status !== 'PENDING') {
@@ -256,6 +295,21 @@ export class EvaluationsService {
                         hasBlockingIssues: scoreResult.hasBlockingIssues,
                     },
                 });
+                await tx.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_COMPLETED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: {
+                            documentId: execution.documentId,
+                            totalRules: result.totalRules,
+                            failedRules: result.failedRules,
+                            qualityScore: scoreResult.score,
+                            hasBlockingIssues: scoreResult.hasBlockingIssues,
+                        },
+                    },
+                });
             });
 
             return this.findOne(id);
@@ -265,14 +319,25 @@ export class EvaluationsService {
                     ? error.message
                     : 'Error técnico desconocido.';
 
-            await this.prisma.governanceExecution.update({
-                where: { id },
-                data: {
-                    status: 'FAILED',
-                    completedAt: new Date(),
-                    errorMessage: errorMessage.slice(0, 2000),
-                },
-            });
+            await this.prisma.$transaction([
+                this.prisma.governanceExecution.update({
+                    where: { id },
+                    data: {
+                        status: 'FAILED',
+                        completedAt: new Date(),
+                        errorMessage: errorMessage.slice(0, 2000),
+                    },
+                }),
+                this.prisma.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_FAILED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: { documentId: execution.documentId },
+                    },
+                }),
+            ]);
 
             throw new InternalServerErrorException(
                 'No fue posible completar la evaluación. ' +
