@@ -1,0 +1,502 @@
+
+import {
+    Injectable,
+    ForbiddenException,
+    NotFoundException,
+    ConflictException,
+    InternalServerErrorException,
+} from '@nestjs/common';
+
+import { PrismaService } from '../prisma/prisma.service.js';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
+
+import { parseDocument } from 'yaml';
+
+import {
+    GovernanceRuleEngineService,
+} from '../governance/governance-rule-engine.service.js';
+
+import {
+    isOpenApiObject,
+} from '../governance/utils/resolve-local-ref.js';
+
+
+import {
+    calculateFinalQualityScore,
+    type QualityRuleInput,
+} from '../governance/scoring/calculate-final-quality-score.js';
+
+import {
+    validateCompleteEvaluation,
+} from '../governance/scoring/validate-complete-evaluation.js';
+
+import {
+    getGovernanceRules,
+} from '../governance/catalog/governance-rules.catalog.js';
+
+import {
+    calculateQualityScore,
+} from '../governance/scoring/quality-score.calculator.js';
+
+import type {
+    GovernanceRuleResult,
+} from '../governance/interfaces/governance-result.interface.js';
+
+const EXPECTED_MVP_RULES = 18;
+
+
+@Injectable()
+export class EvaluationsService {
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly engine: GovernanceRuleEngineService,
+    ) { }
+
+    async create(documentId: string, actor: AuthenticatedUser) {
+        const document =
+            await this.prisma.openApiDocument.findUnique({
+                where: { id: documentId },
+                select: { id: true },
+            });
+
+        if (!document) {
+            throw new NotFoundException(
+                'El documento OpenAPI solicitado no existe.',
+            );
+        }
+
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El solicitante no está activo.');
+        }
+
+        return this.prisma.$transaction(async (tx) => {
+            const evaluation = await tx.governanceExecution.create({
+                data: {
+                    documentId,
+                    executedBy: actor.id,
+                    status: 'PENDING',
+                },
+            });
+            await tx.auditEvent.create({
+                data: {
+                    actorId: actor.id,
+                    action: 'EVALUATION_REQUESTED',
+                    entityType: 'EVALUATION',
+                    entityId: evaluation.id,
+                    apiId: null,
+                    detail: { documentId },
+                },
+            });
+            return evaluation;
+        });
+    }
+
+
+    async execute(id: string, actor: AuthenticatedUser) {
+        const execution =
+            await this.prisma.governanceExecution.findUnique({
+                where: { id },
+                include: {
+                    document: {
+                        select: {
+                            content: true,
+                            format: true,
+                            fileName: true,
+                            uploadedBy: true,
+                            isValid: true,
+                            apiVersion: {
+                                select: {
+                                    version: true,
+                                    api: {
+                                        select: {
+                                            owner: true,
+                                            status: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+        if (!execution) {
+            throw new NotFoundException(
+                'La evaluación solicitada no existe.',
+            );
+        }
+
+        // No atribuir una ejecución a un usuario distinto del solicitante.
+        // El administrador puede ejecutar evaluaciones pendientes de otros usuarios.
+        if (execution.executedBy !== actor.id && !actor.roles.includes('ADMIN')) {
+            throw new ForbiddenException(
+                'Solo el solicitante o un administrador puede ejecutar esta evaluación.',
+            );
+        }
+
+        const activeUser = await this.prisma.user.findUnique({
+            where: { id: actor.id },
+            select: { isActive: true },
+        });
+        if (!activeUser?.isActive) {
+            throw new ForbiddenException('El usuario no está activo.');
+        }
+
+        if (execution.status !== 'PENDING') {
+            throw new ConflictException(
+                'Solo se pueden ejecutar evaluaciones pendientes.',
+            );
+        }
+
+        // Evita que dos solicitudes ejecuten simultáneamente
+        // la misma evaluación.
+        const claimed = await this.prisma.governanceExecution
+            .updateMany({
+                where: {
+                    id,
+                    status: 'PENDING',
+                },
+                data: {
+                    status: 'RUNNING',
+                    startedAt: new Date(),
+                    errorMessage: null,
+                },
+            });
+
+        if (claimed.count !== 1) {
+            throw new ConflictException(
+                'Esta evaluación ya fue tomada por otra ejecución.',
+            );
+        }
+
+        try {
+            let specification: unknown;
+
+            if (execution.document.format === 'JSON') {
+                specification = JSON.parse(
+                    execution.document.content,
+                ) as unknown;
+            } else {
+                const yamlDocument = parseDocument(
+                    execution.document.content,
+                    { uniqueKeys: true },
+                );
+
+                if (yamlDocument.errors.length > 0) {
+                    throw new Error(
+                        'El documento YAML contiene errores de sintaxis.',
+                    );
+                }
+
+                specification = yamlDocument.toJS({
+                    maxAliasCount: 100,
+                }) as unknown;
+            }
+
+            if (!isOpenApiObject(specification)) {
+                throw new Error(
+                    'El documento OpenAPI debe contener un objeto raíz.',
+                );
+            }
+
+
+            // Contexto obtenido desde la versión registrada
+            // en API Governance Platform.
+            const evaluationContext = {
+                registeredApiVersion:
+                    execution.document.apiVersion.version,
+                apiOwner:
+                    execution.document.apiVersion.api.owner,
+
+                apiLifecycleStatus:
+                    execution.document.apiVersion.api.status,
+                documentFileName:
+                    execution.document.fileName,
+                documentUploadedBy:
+                    execution.document.uploadedBy,
+                documentIsValid:
+                    execution.document.isValid,
+            };
+
+            // Ejecutar las reglas utilizando el documento
+            // y sus metadatos registrados.
+            const result = this.engine.execute(
+                specification,
+                evaluationContext,
+            );
+
+
+            const expectedRuleIds = getGovernanceRules().map(
+                (rule) => rule.id,
+            );
+
+            // Verificar integridad de la evaluación.
+            validateCompleteEvaluation(
+                result.results,
+                expectedRuleIds,
+            );
+
+            // Construir la entrada de la calculadora.
+            const scoringInput: QualityRuleInput[] =
+                result.results.map((rule) => ({
+                    ruleId: rule.ruleId,
+                    status: rule.status,
+                    severity: rule.severity,
+                    weight: rule.weight,
+                }));
+
+            // Calcular el Quality Score definitivo.
+            const scoreResult = calculateFinalQualityScore(
+                scoringInput,
+            );
+
+
+
+            // La persistencia de los resultados y el cierre
+            // de la evaluación deben ocurrir atómicamente.
+            await this.prisma.$transaction(async (tx) => {
+
+                await tx.ruleResult.createMany({
+                    data: result.results.map((rule) => ({
+                        executionId: id,
+
+                        // Identificación y metadatos históricos
+                        ruleId: rule.ruleId,
+                        ruleName: rule.ruleName,
+                        category: rule.category,
+                        severity: rule.severity,
+                        weight: rule.weight,
+
+                        // Resultado de la evaluación
+                        status: rule.status,
+                        message: rule.message,
+                        evidence: rule.evidence ?? null,
+                        recommendation: rule.recommendation ?? null,
+                    })),
+                });
+
+
+                await tx.governanceExecution.update({
+                    where: { id },
+                    data: {
+                        status: 'COMPLETED',
+                        completedAt: new Date(),
+                        totalRules: result.totalRules,
+                        passedRules: result.passedRules,
+                        failedRules: result.failedRules,
+                        warningRules: result.warningRules,
+                        notApplicableRules:
+                            result.notApplicableRules,
+                        qualityScore: scoreResult.score,
+                        hasBlockingIssues: scoreResult.hasBlockingIssues,
+                    },
+                });
+                await tx.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_COMPLETED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: {
+                            documentId: execution.documentId,
+                            totalRules: result.totalRules,
+                            failedRules: result.failedRules,
+                            qualityScore: scoreResult.score,
+                            hasBlockingIssues: scoreResult.hasBlockingIssues,
+                        },
+                    },
+                });
+            });
+
+            return this.findOne(id);
+        } catch (error) {
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : 'Error técnico desconocido.';
+
+            await this.prisma.$transaction([
+                this.prisma.governanceExecution.update({
+                    where: { id },
+                    data: {
+                        status: 'FAILED',
+                        completedAt: new Date(),
+                        errorMessage: errorMessage.slice(0, 2000),
+                    },
+                }),
+                this.prisma.auditEvent.create({
+                    data: {
+                        actorId: actor.id,
+                        action: 'EVALUATION_FAILED',
+                        entityType: 'EVALUATION',
+                        entityId: id,
+                        detail: { documentId: execution.documentId },
+                    },
+                }),
+            ]);
+
+            throw new InternalServerErrorException(
+                'No fue posible completar la evaluación. ' +
+                'Consulta su estado para revisar el error.',
+            );
+        }
+    }
+
+
+    async findAll() {
+        return this.prisma.governanceExecution.findMany({
+            orderBy: {
+                requestedAt: 'desc',
+            },
+            include: {
+                document: {
+                    select: {
+                        id: true,
+                        fileName: true,
+                        format: true,
+                        openApiVersion: true,
+                        apiVersion: {
+                            select: {
+                                id: true,
+                                version: true,
+                                api: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    async findByDocument(documentId: string) {
+        const document =
+            await this.prisma.openApiDocument.findUnique({
+                where: { id: documentId },
+                select: { id: true },
+            });
+
+        if (!document) {
+            throw new NotFoundException(
+                'El documento OpenAPI solicitado no existe.',
+            );
+        }
+
+        return this.prisma.governanceExecution.findMany({
+            where: { documentId },
+            orderBy: {
+                requestedAt: 'desc',
+            },
+        });
+    }
+
+    async findOne(id: string) {
+        const execution =
+            await this.prisma.governanceExecution.findUnique({
+                where: { id },
+                include: {
+                    results: {
+                        orderBy: {
+                            ruleId: 'asc',
+                        },
+                    },
+                    document: {
+                        select: {
+                            id: true,
+                            fileName: true,
+                            format: true,
+                            openApiVersion: true,
+                            apiVersion: {
+                                select: {
+                                    id: true,
+                                    version: true,
+                                    api: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+        if (!execution) {
+            throw new NotFoundException(
+                'La evaluación solicitada no existe.',
+            );
+        }
+
+
+
+        let scoreAssessment = null;
+
+        if (execution.status === 'COMPLETED') {
+            const results = execution.results;
+
+            const hasCompleteMetadata =
+                results.length > 0 &&
+                results.every(
+                    (result) =>
+                        result.ruleName !== null &&
+                        result.category !== null &&
+                        result.severity !== null &&
+                        result.weight !== null &&
+                        Number.isFinite(result.weight) &&
+                        result.weight > 0,
+                );
+
+            if (hasCompleteMetadata) {
+                const historicalResults: GovernanceRuleResult[] =
+                    results.map((result) => ({
+                        ruleId: result.ruleId,
+                        ruleName: result.ruleName!,
+                        category: result.category!,
+                        severity: result.severity!,
+                        weight: result.weight!,
+                        status: result.status,
+                        message: result.message,
+                        evidence: result.evidence ?? undefined,
+                        recommendation:
+                            result.recommendation ?? undefined,
+                    }));
+
+                const calculation =
+                    calculateQualityScore(historicalResults);
+
+                const executedRules = results.length;
+
+                scoreAssessment = {
+                    score: calculation.score,
+                    executedRules,
+                    expectedRules: EXPECTED_MVP_RULES,
+                    applicableRules: calculation.applicableRules,
+                    excludedRules: calculation.excludedRules,
+                    coveragePercentage: Math.round(
+                        (executedRules / EXPECTED_MVP_RULES) * 10000,
+                    ) / 100,
+                    isProvisional: true,
+                    criticalFailuresDetectedInExecutedRules:
+                        calculation.hasCriticalFailures,
+                };
+            }
+        }
+
+        return {
+            ...execution,
+            scoreAssessment,
+        };
+
+
+    }
+}

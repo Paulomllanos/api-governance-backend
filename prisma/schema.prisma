@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApiLifecycleStatus {
+  ACTIVE
+  DRAFT
+  DEPRECATED
+}
+
+enum OpenApiFormat {
+  JSON
+  YAML
+}
+
+enum EvaluationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum RuleResultStatus {
+  PASS
+  FAIL
+  WARNING
+  NOT_APPLICABLE
+}
+
+enum GovernanceRuleCategory {
+  DESIGN
+  DOCUMENTATION
+  SECURITY
+  VERSIONING
+  OBSERVABILITY
+  GOVERNANCE
+}
+
+enum GovernanceRuleSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum WorkflowStatus {
+  DRAFT
+  IN_REVIEW
+  OBSERVED
+  CORRECTED
+  APPROVED
+  PUBLISHED
+}
+
+model Api {
+  id          String             @id @default(uuid())
+  name        String
+  description String?
+  owner       String             @default("Unassigned")
+  status      ApiLifecycleStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions ApiVersion[]
+
+  @@map("apis")
+}
+
+model ApiVersion {
+  id          String @id @default(uuid())
+  apiId       String
+  version     String
+  description String
+  status      String @default("DRAFT")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  api Api @relation(fields: [apiId], references: [id], onDelete: Restrict)
+
+  documents       OpenApiDocument[]
+  workflowStatus  WorkflowStatus       @default(DRAFT)
+  workflowHistory WorkflowTransition[]
+
+  @@unique([apiId, version])
+  @@index([apiId])
+  @@map("api_versions")
+}
+
+model OpenApiDocument {
+  id             String        @id @default(uuid())
+  versionId      String
+  fileName       String
+  content        String        @db.Text
+  format         OpenApiFormat
+  openApiVersion String
+  isValid        Boolean
+  uploadedBy     String
+  createdAt      DateTime      @default(now())
+
+  apiVersion ApiVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  evaluations GovernanceExecution[]
+
+  @@index([versionId])
+  @@map("openapi_documents")
+}
+
+model GovernanceExecution {
+  id         String @id @default(uuid())
+  documentId String
+  executedBy String
+
+  status EvaluationStatus @default(PENDING)
+
+  requestedAt DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  qualityScore      Float?
+  hasBlockingIssues Boolean?
+
+  totalRules         Int @default(0)
+  passedRules        Int @default(0)
+  failedRules        Int @default(0)
+  warningRules       Int @default(0)
+  notApplicableRules Int @default(0)
+
+  errorMessage String? @db.Text
+
+  document          OpenApiDocument      @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  results           RuleResult[]
+  workflowApprovals WorkflowTransition[]
+
+  @@index([documentId, requestedAt])
+  @@index([status])
+  @@map("governance_executions")
+}
+
+model RuleResult {
+  id          String @id @default(uuid())
+  executionId String
+
+  ruleId   String
+  ruleName String?
+  category GovernanceRuleCategory?
+  severity GovernanceRuleSeverity?
+  weight   Float?
+
+  status RuleResultStatus
+
+  message        String  @db.Text
+  evidence       String? @db.Text
+  recommendation String? @db.Text
+
+  execution GovernanceExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+
+  @@unique([executionId, ruleId])
+  @@index([ruleId])
+  @@index([category, severity])
+  @@map("rule_results")
+}
+
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique
+  displayName  String
+  passwordHash String
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles    UserRole[]
+  sessions AuthSession[]
+
+  workflowTransitions WorkflowTransition[]
+
+  notificationReads NotificationRead[]
+  auditEvents AuditEvent[]
+
+  @@index([isActive])
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+
+  createdAt DateTime @default(now())
+
+  users UserRole[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model AuthSession {
+  id String @id @default(uuid())
+
+  userId String
+
+  // Hash SHA-256 del refresh token.
+  // El token original nunca se guarda en PostgreSQL.
+  refreshTokenHash String @unique @db.VarChar(64)
+
+  // Control del ciclo de vida de la sesión.
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model WorkflowTransition {
+  id String @id @default(uuid())
+
+  versionId     String
+  performedById String
+
+  fromStatus WorkflowStatus
+  toStatus   WorkflowStatus
+
+  comment String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  apiVersion ApiVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  performedBy User @relation(fields: [performedById], references: [id], onDelete: Restrict)
+
+  // Evidencia histórica de aprobación.
+  // Se mantiene opcional para conservar
+  // las transiciones existentes.
+  evaluationId                String?
+  evaluatedDocumentId         String?
+  evaluationScore             Float?
+  evaluatedRules              Int?
+  evaluationHasBlockingIssues Boolean?
+
+  evaluation GovernanceExecution? @relation(fields: [evaluationId], references: [id], onDelete: Restrict)
+
+  notificationReads NotificationRead[]
+
+  @@index([evaluationId])
+  @@index([versionId, createdAt])
+  @@index([performedById])
+  @@map("workflow_transitions")
+}
+
+model NotificationRead {
+  id           String             @id @default(uuid())
+  userId       String
+  transitionId String
+  readAt       DateTime           @default(now())
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transition   WorkflowTransition @relation(fields: [transitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, transitionId])
+  @@index([transitionId])
+  @@map("notification_reads")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  apiId      String?
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([apiId, createdAt])
+  @@map("audit_events")
+}
