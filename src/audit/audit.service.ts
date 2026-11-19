@@ -49,6 +49,33 @@ export class AuditService {
   constructor(
     private readonly prisma: PrismaService,
   ) { }
+  
+  async findActivity(page = 1, limit = 20) {
+    const safePage = Math.max(1, Math.trunc(page));
+    const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+    const [total, events] = await this.prisma.$transaction([
+      this.prisma.auditEvent.count(),
+      this.prisma.auditEvent.findMany({
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        include: {
+          actor: { select: { id: true, displayName: true, email: true } },
+        },
+      }),
+    ]);
+
+    return {
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+      items: events,
+    };
+  }
+
 
   async findAll(page = 1, limit = 20, filters: AuditFilters = {}) {
     const safePage = Math.max(1, Math.trunc(page));
