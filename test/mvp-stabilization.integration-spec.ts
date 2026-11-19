@@ -15,6 +15,7 @@ let app: INestApplication;
 let prisma: PrismaService;
 let developerToken: string;
 let reviewerToken: string;
+let adminToken: string;
 let developerId: string;
 const userIds: string[] = [];
 const apiIds: string[] = [];
@@ -22,7 +23,7 @@ const versionIds: string[] = [];
 const documentIds: string[] = [];
 const executionIds: string[] = [];
 
-async function makeUser(role: 'DEVELOPER' | 'REVIEWER') {
+async function makeUser(role: 'ADMIN' | 'DEVELOPER' | 'REVIEWER') {
   const roleRecord = await prisma.role.upsert({
     where: { name: role },
     create: { name: role },
@@ -61,6 +62,8 @@ beforeAll(async () => {
   await app.init();
   prisma = app.get(PrismaService);
 
+  const admin = await makeUser('ADMIN');
+  adminToken = admin.token;
   const developer = await makeUser('DEVELOPER');
   const reviewer = await makeUser('REVIEWER');
   developerId = developer.id;
@@ -198,9 +201,14 @@ describe('MVP estabilizado: actor, auditoría, validación y permisos', () => {
       .get(`${PREFIX}/audit/activity`);
     expect(denied.status).toBe(401);
 
-    const response = await request(app.getHttpServer())
+    const forbidden = await request(app.getHttpServer())
       .get(`${PREFIX}/audit/activity?page=1&limit=20`)
       .set('Authorization', `Bearer ${developerToken}`);
+    expect(forbidden.status).toBe(403);
+
+    const response = await request(app.getHttpServer())
+      .get(`${PREFIX}/audit/activity?page=1&limit=20`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(response.status).toBe(200);
     expect(response.body.items.some(
       (item: { actor: { id: string } | null }) => item.actor?.id === developerId,
