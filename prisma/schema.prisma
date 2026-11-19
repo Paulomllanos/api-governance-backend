@@ -183,6 +183,7 @@ model User {
   workflowTransitions WorkflowTransition[]
 
   notificationReads NotificationRead[]
+  auditEvents AuditEvent[]
 
   @@index([isActive])
 }
@@ -279,4 +280,23 @@ model NotificationRead {
   @@unique([userId, transitionId])
   @@index([transitionId])
   @@map("notification_reads")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  apiId      String?
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([apiId, createdAt])
+  @@map("audit_events")
 }
