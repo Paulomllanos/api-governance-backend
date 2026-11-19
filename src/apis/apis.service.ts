@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
 import { CreateApiDto } from './dto/create-api.dto.js';
 import { UpdateApiDto } from './dto/update-api.dto.js';
 
@@ -35,7 +36,7 @@ export class ApisService {
 
 
 
-    async create(data: CreateApiDto) {
+    async create(data: CreateApiDto, actor: AuthenticatedUser) {
         const name = data.name.trim();
         const owner = data.owner.trim();
 
@@ -51,13 +52,25 @@ export class ApisService {
             );
         }
 
-        return this.prisma.api.create({
-            data: {
-                name,
-                description: data.description.trim(),
-                owner,
-                status: 'DRAFT',
-            },
+        return this.prisma.$transaction(async (tx) => {
+            const api = await tx.api.create({
+                data: {
+                    name,
+                    description: data.description.trim(),
+                    owner,
+                    status: 'DRAFT',
+                },
+            });
+            await tx.auditEvent.create({
+                data: {
+                    actorId: actor.id,
+                    action: 'API_CREATED',
+                    entityType: 'API',
+                    entityId: api.id,
+                    apiId: api.id,
+                },
+            });
+            return api;
         });
     }
 
@@ -87,7 +100,7 @@ export class ApisService {
     }
 
 
-    async update(id: string, data: UpdateApiDto) {
+    async update(id: string, data: UpdateApiDto, actor: AuthenticatedUser) {
         // Comprobamos que la API exista.
         await this.findOne(id);
 
@@ -132,9 +145,22 @@ export class ApisService {
             updateData.owner = owner;
         }
 
-        return this.prisma.api.update({
-            where: { id },
-            data: updateData,
+        return this.prisma.$transaction(async (tx) => {
+            const api = await tx.api.update({
+                where: { id },
+                data: updateData,
+            });
+            await tx.auditEvent.create({
+                data: {
+                    actorId: actor.id,
+                    action: 'API_UPDATED',
+                    entityType: 'API',
+                    entityId: api.id,
+                    apiId: api.id,
+                    detail: { fields: Object.keys(updateData) },
+                },
+            });
+            return api;
         });
     }
 
