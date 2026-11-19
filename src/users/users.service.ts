@@ -28,7 +28,7 @@ export class UsersService {
     return this.prisma.user.findUniqueOrThrow({ where: { id }, select: publicSelect });
   }
 
-  async createUser(input: { email: string; displayName: string; password: string; roles: AppRole[] }) {
+  async createUser(input: { email: string; displayName: string; password: string; roles: AppRole[] }, actorId?: string) {
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
     if (!email || displayName.length < 2 || input.password.length < 12 || input.password.length > 128 || input.roles.length === 0 || input.roles.some(r => !APP_ROLES.includes(r))) {
@@ -37,9 +37,21 @@ export class UsersService {
     const uniqueRoles = [...new Set(input.roles)];
     const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
     try {
-      return await this.prisma.user.create({
-        data: { email, displayName, passwordHash, roles: { create: uniqueRoles.map(name => ({ role: { connect: { name } } })) } },
-        select: publicSelect,
+      return await this.prisma.$transaction(async tx => {
+        const user = await tx.user.create({
+          data: { email, displayName, passwordHash, roles: { create: uniqueRoles.map(name => ({ role: { connect: { name } } })) } },
+          select: publicSelect,
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: actorId ?? null,
+            action: 'USER_CREATED',
+            entityType: 'USER',
+            entityId: user.id,
+            detail: { roles: uniqueRoles },
+          },
+        });
+        return user;
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Ya existe un usuario con ese correo.');
@@ -77,6 +89,19 @@ export class UsersService {
           await tx.user.update({ where: { id }, data: { isActive: input.isActive } });
           if (!input.isActive) await tx.authSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
         }
+        await tx.auditEvent.create({
+          data: {
+            actorId,
+            action: 'USER_ADMIN_UPDATED',
+            entityType: 'USER',
+            entityId: id,
+            detail: {
+              rolesChanged: input.roles !== undefined,
+              activeStateChanged: input.isActive !== undefined,
+              ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+            },
+          },
+        });
         return tx.user.findUniqueOrThrow({ where: { id }, select: publicSelect });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
@@ -96,7 +121,23 @@ export class UsersService {
       if (!input.currentPassword || !(await argon2.verify(user.passwordHash, input.currentPassword))) throw new UnauthorizedException('Se requiere la contraseña actual para cambiar el correo.');
     }
     try {
-      return await this.prisma.user.update({ where: { id }, data: { ...(name !== undefined ? { displayName: name } : {}), ...(email !== undefined ? { email } : {}) }, select: publicSelect });
+      return await this.prisma.$transaction(async tx => {
+        const updated = await tx.user.update({
+          where: { id },
+          data: { ...(name !== undefined ? { displayName: name } : {}), ...(email !== undefined ? { email } : {}) },
+          select: publicSelect,
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: id,
+            action: 'PROFILE_UPDATED',
+            entityType: 'USER',
+            entityId: id,
+            detail: { fields: [name !== undefined ? 'displayName' : null, email !== undefined ? 'email' : null].filter(Boolean) },
+          },
+        });
+        return updated;
+      });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Correo ya registrado.');
       throw error;
@@ -112,6 +153,14 @@ export class UsersService {
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id }, data: { passwordHash: hash } }),
       this.prisma.authSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
+      this.prisma.auditEvent.create({
+        data: {
+          actorId: id,
+          action: 'PASSWORD_CHANGED',
+          entityType: 'USER',
+          entityId: id,
+        },
+      }),
     ]);
     return { message: 'Contraseña actualizada. Inicia sesión nuevamente.' };
   }
